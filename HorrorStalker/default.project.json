@@ -1,0 +1,23 @@
+{
+  "name": "HorrorStalker",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "Horror": {
+        "$path": "src/ReplicatedStorage/Horror"
+      }
+    },
+    "ServerScriptService": {
+      "Horror": {
+        "$path": "src/ServerScriptService/Horror"
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "Horror": {
+          "$path": "src/StarterPlayer/StarterPlayerScripts/Horror"
+        }
+      }
+    }
+  }
+}

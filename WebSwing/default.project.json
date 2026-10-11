@@ -1,0 +1,23 @@
+{
+  "name": "WebSwing",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "WebSwing": {
+        "$path": "src/ReplicatedStorage/WebSwing"
+      }
+    },
+    "ServerScriptService": {
+      "WebSwing": {
+        "$path": "src/ServerScriptService/WebSwing"
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "WebSwing": {
+          "$path": "src/StarterPlayer/StarterPlayerScripts/WebSwing"
+        }
+      }
+    }
+  }
+}
