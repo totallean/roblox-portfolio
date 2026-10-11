@@ -20,6 +20,8 @@ Released game: [Spectrum Forge](https://www.roblox.com/games/90164767787037/Spec
 **Controls:** hold LMB / R2 to swing, Q / L2 web zip, hold Shift / L1 to reel in, Space to jump off the web.
 Mobile buttons are created automatically.
 
+Ready-to-open place file: [`WebSwing/WebSwing.rbxl`](WebSwing/WebSwing.rbxl).
+
 - **Pendulum physics on top of Roblox physics.** The character is switched to `PlatformStand` and its
   velocity is corrected every `PreSimulation` step: the outward radial component is replaced by an
   inward one proportional to rope stretch, so the radius stays stable without teleporting. Input pumps the
@@ -93,7 +95,7 @@ The place file `ButterSquishTycoon.rbxl` opens directly in Studio; `default.proj
 
 ## Building a place from this repo
 
-The quickest way is to open a ready place file (`HorrorStalker/TheStalker.rbxl`,
+The quickest way is to open a ready place file (`WebSwing/WebSwing.rbxl`, `HorrorStalker/TheStalker.rbxl`,
 `ButterSquishTycoon/ButterSquishTycoon.rbxl`). To rebuild **WebSwing** or **HorrorStalker** from source:
 
 1. Open a new Baseplate in Studio.
