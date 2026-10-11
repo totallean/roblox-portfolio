@@ -42,6 +42,8 @@ Mobile buttons are created automatically.
 **Controls:** Shift run (loud), C crouch (quiet, harder to see), F flashlight, E hide / take keys,
 **G shows the AI's vision** (debug overlay for demoing the AI).
 
+Ready-to-open place file: [`HorrorStalker/TheStalker.rbxl`](HorrorStalker/TheStalker.rbxl).
+
 - **Perception.** Vision = horizontal view cone + small "sixth sense" radius + raycast line of sight to head
   and torso. View distance scales with how lit you are (static lamp map), your flashlight and crouching.
   Awareness fills gradually (faster when close or lit) and decays when you break line of sight.
@@ -91,7 +93,8 @@ The place file `ButterSquishTycoon.rbxl` opens directly in Studio; `default.proj
 
 ## Building a place from this repo
 
-For **WebSwing** and **HorrorStalker**:
+The quickest way is to open a ready place file (`HorrorStalker/TheStalker.rbxl`,
+`ButterSquishTycoon/ButterSquishTycoon.rbxl`). To rebuild **WebSwing** or **HorrorStalker** from source:
 
 1. Open a new Baseplate in Studio.
 2. Run `build/BuildMap.luau` in the command bar to generate the map.
