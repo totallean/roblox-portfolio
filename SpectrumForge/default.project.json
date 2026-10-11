@@ -1,0 +1,10 @@
+{
+  "name": "SpectrumForge",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": { "SpectrumForge": { "$path": "src/ReplicatedStorage/SpectrumForge" } },
+    "ServerScriptService": { "SpectrumForge": { "$path": "src/ServerScriptService/SpectrumForge" } },
+    "ServerStorage": { "SpectrumForgeTests": { "$path": "src/ServerStorage/SpectrumForgeTests" } },
+    "StarterPlayer": { "StarterPlayerScripts": { "SpectrumForge": { "$path": "src/StarterPlayer/StarterPlayerScripts/SpectrumForge" } } }
+  }
+}
