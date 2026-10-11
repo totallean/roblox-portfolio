@@ -1,20 +1,3 @@
---[[
-	PlotService — выдача/освобождение плота и вся геометрия слотов.
-
-	Ключевая идея: ВСЯ сцена плота генерируется из Config.
-	EnsureLayout(plot) идемпотентна — можно звать и в Edit-режиме (чтобы
-	человек увидел слоты в ServerStorage.PlotTemplate), и в рантайме.
-	Добавил станцию одной строкой в Config.Stations — при следующем
-	запуске у неё появятся слот, триггер и кнопка. Логику править не нужно.
-
-	Слоты под Toolbox:
-	  • визуальный объект = Model с точным именем Slot_* и одним Part
-	    внутри с именем Placeholder; у Model проставлен PrimaryPart;
-	  • служебные Part'ы (DropPoint, SellZone, Trigger_*) лежат отдельно,
-	    Transparency = 1, CanCollide = false, и не двигаются при замене модели;
-	  • атрибуты SlotSize / FacingDirection подсказывают габарит модели.
-]]
-
 local ServerStorage = game:GetService("ServerStorage")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
@@ -24,22 +7,15 @@ local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Co
 
 local PlotService = {}
 
--- Сигнал: (player, plot) — игрок занял плот. Main поднимает по нему
--- станции, баланс и обучение.
 PlotService.PlotClaimed = Instance.new("BindableEvent")
 
 local plotsFolder: Folder
-local ownedByPlayer = {}   -- [player] = plot Model
-local setupHooks = {}      -- вызываются при выдаче плота
-local cleanupHooks = {}    -- вызываются при освобождении плота
+local ownedByPlayer = {}
+local setupHooks = {}
+local cleanupHooks = {}
 
-local TOP_Y = Config.Plot.Size.Y * 0.5   -- смещение от центра базы до её верха
+local TOP_Y = Config.Plot.Size.Y * 0.5
 
--- ═══════════════════════════════════════════════════════════════
--- ГЕОМЕТРИЧЕСКИЕ ХЕЛПЕРЫ
--- ═══════════════════════════════════════════════════════════════
-
--- Локальный офсет (от центра ВЕРХНЕЙ плоскости базы) → мировой CFrame
 function PlotService.LocalCF(plot: Model, offset: Vector3): CFrame
 	return plot:GetPivot() * CFrame.new(offset.X, offset.Y + TOP_Y, offset.Z)
 end
@@ -72,7 +48,6 @@ local function ensureFolder(parent: Instance, name: string): Folder
 	return folder
 end
 
--- Жирная подпись с обводкой на грани детали (retro-slop)
 function PlotService.AddLabel(part: BasePart, text: string, color: Color3, face: Enum.NormalId?, guiName: string?)
 	local name = guiName or "SlotLabel"
 	local gui = part:FindFirstChild(name)
@@ -110,7 +85,6 @@ function PlotService.AddLabel(part: BasePart, text: string, color: Color3, face:
 	return gui
 end
 
--- Слот под Toolbox: Model + один Placeholder Part + PrimaryPart
 function PlotService.EnsureSlotModel(parent: Instance, slotName: string, opts): Model
 	local model = parent:FindFirstChild(slotName)
 	if not model or not model:IsA("Model") then
@@ -120,8 +94,6 @@ function PlotService.EnsureSlotModel(parent: Instance, slotName: string, opts): 
 		model.Parent = parent
 	end
 
-	-- Если человек уже заменил плейсхолдер моделью из Toolbox — НЕ трогаем геометрию,
-	-- только чиним PrimaryPart, чтобы слот оставался переносимым одной операцией.
 	local placeholder = model:FindFirstChild("Placeholder")
 	local hasCustomGeometry = (placeholder == nil) and (model:FindFirstChildWhichIsA("BasePart", true) ~= nil)
 
@@ -142,7 +114,6 @@ function PlotService.EnsureSlotModel(parent: Instance, slotName: string, opts): 
 		model.PrimaryPart = placeholder
 	end
 
-	-- Подсказки для человека, который будет менять плейсхолдер на модель
 	model:SetAttribute("SlotSize", opts.Size)
 	model:SetAttribute("FacingDirection", opts.Facing or Vector3.new(0, 0, 1))
 	model:SetAttribute("SlotName", slotName)
@@ -161,7 +132,6 @@ function PlotService.EnsureSlotModel(parent: Instance, slotName: string, opts): 
 	return model
 end
 
--- Осветлить цвет на N единиц RGB — лего-шип светлее своей плитки
 local function lighten(color: Color3, amount: number): Color3
 	local add = amount / 255
 	return Color3.new(
@@ -170,12 +140,6 @@ local function lighten(color: Color3, amount: number): Color3
 		math.clamp(color.B + add, 0, 1))
 end
 
--- ═══════════════════════════════════════════════════════════════
--- ПОЛ ЦЕХА
--- Сетка плиток с зазором: тот же приём, что даёт «выдавленный» рисунок
--- в садовых тайкунах, только сталь вместо газона. Плитки чисто
--- декоративные: CanCollide/CanTouch/CanQuery = false, ходим по Base.
--- ═══════════════════════════════════════════════════════════════
 local function buildFloor(plot: Model, place)
 	local cfg = Config.Floor
 	local folder = ensureFolder(plot, "Floor")
@@ -184,7 +148,6 @@ local function buildFloor(plot: Model, place)
 		return
 	end
 
-	-- Пересобираем только когда изменились настройки, а не на каждый вызов
 	local signature = ("%s|%s|%s|%s|%s|%s|%s"):format(tostring(Config.Plot.Size), cfg.TileSize,
 		cfg.Gap, cfg.LaneHalfWidth, cfg.HazardCenter,
 		tostring(cfg.TilesEnabled), tostring(cfg.HazardEnabled))
@@ -218,11 +181,10 @@ local function buildFloor(plot: Model, place)
 	local rows = math.floor(size.Z / tile)
 	local startX = -size.X * 0.5 + tile * 0.5
 	local startZ = -size.Z * 0.5 + tile * 0.5
-	-- Плитка с лего-шипами по умолчанию выключена: этот рельеф живёт
-	-- на общей серой плите-земле, а не на каждом плоте
+
 	for cx = 0, (cfg.TilesEnabled and cols - 1 or -1) do
 		local x = startX + cx * tile
-		-- Коридор линии оставляем без плитки: там лента и разметка
+
 		if math.abs(x) >= cfg.LaneHalfWidth then
 			for cz = 0, rows - 1 do
 				local z = startZ + cz * tile
@@ -234,8 +196,6 @@ local function buildFloor(plot: Model, place)
 					tileColor,
 					Vector3.new(x, cfg.Thickness * 0.5, z))
 
-				-- Лего-шип: приподнятый квадрат в центре плитки.
-				-- Именно он даёт «выдавленный» рельеф с фотографии.
 				if cfg.StudEnabled then
 					local studSide = tile - cfg.Gap - cfg.StudInset * 2
 					if studSide > 0.5 then
@@ -250,8 +210,6 @@ local function buildFloor(plot: Model, place)
 		end
 	end
 
-	-- Жёлто-чёрная разметка по обе стороны от линии — она размечает
-	-- конвейер и остаётся, даже когда плитка выключена
 	if not cfg.HazardEnabled then
 		return
 	end
@@ -268,15 +226,6 @@ local function buildFloor(plot: Model, place)
 	end
 end
 
--- ═══════════════════════════════════════════════════════════════
--- ЗАБОР
--- Один прямой прогон = столбы + поручни + сетчатая панель между ними.
--- Это настоящая ограда, которую видно, а не светящийся фон.
--- Функция общая: ею строится и забор плота, и периметр всего завода.
---
--- cfFor(position, dir?) -> CFrame — переводит точку в мировую систему.
--- Для плота это place() из EnsureLayout, для карты — мировые координаты.
--- ═══════════════════════════════════════════════════════════════
 local function buildFenceRun(parent: Instance, runName: string, cfg, cfFor, fromPoint: Vector3, toPoint: Vector3): Model?
 	local delta = toPoint - fromPoint
 	local length = delta.Magnitude
@@ -295,8 +244,6 @@ local function buildFenceRun(parent: Instance, runName: string, cfg, cfFor, from
 		model.Parent = parent
 	end
 
-	-- Сетчатая панель — она же Placeholder: весь прогон меняется
-	-- на модель из Toolbox одной операцией.
 	local panel = ensurePart(model, "Placeholder", {
 		Size = Vector3.new(cfg.MeshThickness, height * 0.9, length),
 		Color = cfg.MeshColor,
@@ -310,7 +257,6 @@ local function buildFenceRun(parent: Instance, runName: string, cfg, cfFor, from
 	panel.CFrame = cfFor(center + Vector3.new(0, height * 0.45, 0), direction)
 	model.PrimaryPart = panel
 
-	-- Поручни
 	for index, fraction in ipairs(cfg.RailHeights) do
 		local rail = ensurePart(model, "Rail_" .. index, {
 			Size = Vector3.new(cfg.RailThickness, cfg.RailThickness, length),
@@ -325,7 +271,6 @@ local function buildFenceRun(parent: Instance, runName: string, cfg, cfFor, from
 		rail.CFrame = cfFor(center + Vector3.new(0, height * fraction, 0), direction)
 	end
 
-	-- Столбы через равные промежутки, крайние — точно по концам прогона
 	local spans = math.max(1, math.floor(length / cfg.PostEvery + 0.5))
 	for i = 0, spans do
 		local point = fromPoint + delta * (i / spans)
@@ -348,12 +293,6 @@ local function buildFenceRun(parent: Instance, runName: string, cfg, cfFor, from
 	return model
 end
 
--- ═══════════════════════════════════════════════════════════════
--- ОГРАЖДЕНИЕ ПЛОТА
--- Видимая ограда — заменяемые слоты Slot_Fence_*. Столкновение держит
--- отдельный невидимый Barrier_*, который выше ограды: игрок не
--- перепрыгнет и не свалится, даже если ограду заменят на модель из Toolbox.
--- ═══════════════════════════════════════════════════════════════
 local function buildFence(plot: Model, place)
 	local cfg = Config.Fence
 	local folder = ensureFolder(plot, "Fence")
@@ -373,7 +312,7 @@ local function buildFence(plot: Model, place)
 
 	local halfX, halfZ = size.X * 0.5, size.Z * 0.5
 	local inset = cfg.PostWidth * 0.5
-	local corner = cfg.PostWidth   -- чтобы угловые столбы не наложились друг на друга
+	local corner = cfg.PostWidth
 
 	local function run(name: string, fromPoint: Vector3, toPoint: Vector3)
 		buildFenceRun(folder, name, cfg, place, fromPoint, toPoint)
@@ -391,13 +330,10 @@ local function buildFence(plot: Model, place)
 		barrier.CFrame = place(fromPoint + delta * 0.5 + Vector3.new(0, barrierHeight * 0.5, 0), delta.Unit)
 	end
 
-	-- Боковые стороны идут во всю длину, их концы и образуют углы
 	run("West", Vector3.new(-halfX + inset, 0, -halfZ + inset), Vector3.new(-halfX + inset, 0, halfZ - inset))
 	run("East", Vector3.new(halfX - inset, 0, -halfZ + inset), Vector3.new(halfX - inset, 0, halfZ - inset))
 	run("North", Vector3.new(-halfX + inset + corner, 0, halfZ - inset), Vector3.new(halfX - inset - corner, 0, halfZ - inset))
 
-	-- Южная сторона с проёмом: игрок заходит со стороны спавна.
-	-- Проём смещён вбок (GapCenterX), чтобы вход не приходился на ленту.
 	local gapCenter = math.clamp(cfg.GapCenterX, -halfX + cfg.GapWidth * 0.5, halfX - cfg.GapWidth * 0.5)
 	local southZ = -halfZ + inset
 	local leftEnd = gapCenter - cfg.GapWidth * 0.5
@@ -413,10 +349,6 @@ local function buildFence(plot: Model, place)
 	end
 end
 
--- ═══════════════════════════════════════════════════════════════
--- ФАБРИЧНЫЙ ДЕКОР — цистерны, трубы, ящики, пульт, вытяжка.
--- Логика их не знает: список целиком в Config.Decor.
--- ═══════════════════════════════════════════════════════════════
 local function buildDecor(plot: Model, place)
 	local folder = ensureFolder(plot, "Decor")
 	for _, def in ipairs(Config.Decor) do
@@ -435,17 +367,14 @@ local function buildDecor(plot: Model, place)
 		slot:PivotTo(place(def.Offset) * CFrame.Angles(
 			math.rad(rotation.X), math.rad(rotation.Y), math.rad(rotation.Z)))
 
-		-- Спуски до пола. Форму, диаметр, цвет и материал берём у самой
-		-- трубы: вниз уходит такая же труба, а не отдельная колонна.
 		if def.Legs then
-			local diameter = def.Size.Y          -- у лежачего цилиндра Y = диаметр
+			local diameter = def.Size.Y
 			local halfSpan = def.Size.X * 0.5 - (def.Legs.Inset or 0)
 			local height = def.Offset.Y
 			for index, side in ipairs({ -1, 1 }) do
 				local leg = ensurePart(slot, "Leg_" .. index, {
 					Shape = def.Shape or Enum.PartType.Block,
-					-- Ось цилиндра — X, поэтому длина идёт в X, а деталь
-					-- доворачивается на 90 градусов вокруг Z
+
 					Size = Vector3.new(height, diameter, diameter),
 					Color = def.Color,
 					Material = def.Material,
@@ -459,9 +388,8 @@ local function buildDecor(plot: Model, place)
 			end
 		end
 
-		-- Обручи бочки: кольца чуть шире корпуса, форма и поворот те же
 		if def.Bands then
-			local barrelHeight = def.Size.X   -- у стоячего цилиндра длина идёт в X
+			local barrelHeight = def.Size.X
 			local diameter = def.Size.Y + def.Bands.Overhang
 			for index, fraction in ipairs(def.Bands.Heights) do
 				local band = ensurePart(slot, "Band_" .. index, {
@@ -481,7 +409,6 @@ local function buildDecor(plot: Model, place)
 	end
 end
 
--- Ориентация: деталь «смотрит» в сторону dir
 local function lookCF(position: Vector3, dir: Vector3): CFrame
 	if dir.Magnitude < 0.01 then
 		return CFrame.new(position)
@@ -489,16 +416,10 @@ local function lookCF(position: Vector3, dir: Vector3): CFrame
 	return CFrame.lookAt(position, position + dir.Unit)
 end
 
--- ═══════════════════════════════════════════════════════════════
--- ПРЕФАБЫ СТАНЦИЙ В ServerStorage/Stations
--- Ставятся на плот при покупке. Человек меняет их один раз здесь —
--- и они применяются ко всем плотам сразу.
--- ═══════════════════════════════════════════════════════════════
 function PlotService.EnsureStationPrefabs(): Folder
 	local folder = ensureFolder(ServerStorage, "Stations")
 	for _, def in ipairs(Config.Stations) do
-		-- PlaceModel = false → у станции нет визуала (кнопки ускорения),
-		-- префаб ей не нужен
+
 		if def.PlaceModel ~= false then
 		PlotService.EnsureSlotModel(folder, "Slot_" .. def.Id, {
 			Size = def.SlotSize,
@@ -515,11 +436,8 @@ function PlotService.EnsureStationPrefabs(): Folder
 	return folder
 end
 
--- ═══════════════════════════════════════════════════════════════
--- РАЗМЕТКА ПЛОТА (идемпотентно)
--- ═══════════════════════════════════════════════════════════════
 function PlotService.EnsureLayout(plot: Model)
-	-- База
+
 	local base = ensurePart(plot, "Base", {
 		Size = Config.Plot.Size,
 		Color = Config.Plot.BaseColor,
@@ -531,8 +449,8 @@ function PlotService.EnsureLayout(plot: Model)
 	local visualsFolder  = ensureFolder(plot, "Visuals")
 	local buttonsFolder  = ensureFolder(plot, "Buttons")
 	local triggersFolder = ensureFolder(plot, "Triggers")
-	ensureFolder(plot, "Slots")     -- сюда клонируются купленные станции
-	ensureFolder(plot, "Products")  -- активные бруски масла
+	ensureFolder(plot, "Slots")
+	ensureFolder(plot, "Products")
 
 	local pivot = plot:GetPivot()
 	local function place(offset: Vector3, dir: Vector3?): CFrame
@@ -540,7 +458,6 @@ function PlotService.EnsureLayout(plot: Model)
 		return dir and lookCF(worldPos, (pivot:VectorToWorldSpace(dir))) or CFrame.new(worldPos)
 	end
 
-	-- ── Табличка владельца ──────────────────────────────────────
 	local sign = ensurePart(visualsFolder, "OwnerSign", {
 		Size = Vector3.new(20, 6, 1),
 		Color = Config.Palette.Void,
@@ -550,12 +467,10 @@ function PlotService.EnsureLayout(plot: Model)
 	sign.CFrame = place(Config.Plot.SignOffset, Vector3.new(0, 0, -1))
 	PlotService.AddLabel(sign, Config.Text.PlotVacant, Config.Palette.Butter)
 
-	-- ── Пол цеха, ограждение и фабричный декор ──────────────────
 	buildFloor(plot, place)
 	buildFence(plot, place)
 	buildDecor(plot, place)
 
-	-- ── Конвейер: N сегментов вдоль локальной +Z ────────────────
 	local segSize = Config.Conveyor.SegmentSize
 	for i = 1, Config.Conveyor.SegmentCount do
 		local z = Config.Conveyor.StartZ + (i - 1) * segSize.Z
@@ -568,11 +483,10 @@ function PlotService.EnsureLayout(plot: Model)
 			Tag = Config.Tags.Conveyor,
 			Attributes = { SegmentIndex = i },
 		})
-		-- LookVector сегмента = направление движения ленты
+
 		slot:PivotTo(place(Vector3.new(0, segSize.Y * 0.5, z), Vector3.new(0, 0, 1)))
 	end
 
-	-- Невидимые бортики, чтобы брусок не слетал с ленты
 	local length = Config.Conveyor.SegmentCount * segSize.Z
 	local midZ = Config.Conveyor.StartZ + length * 0.5 - segSize.Z * 0.5
 	for _, side in ipairs({ { "Rail_L", -1 }, { "Rail_R", 1 } }) do
@@ -584,7 +498,6 @@ function PlotService.EnsureLayout(plot: Model)
 		rail.CFrame = place(Vector3.new(side[2] * (segSize.X * 0.5 + 0.25), Config.Conveyor.RailHeight * 0.5, midZ))
 	end
 
-	-- ── Служебные Part'ы ────────────────────────────────────────
 	local producer = Config.GetStation("Extruder")
 	local dropPoint = ensurePart(triggersFolder, "DropPoint", {
 		Size = Vector3.new(2, 2, 2),
@@ -595,13 +508,12 @@ function PlotService.EnsureLayout(plot: Model)
 	})
 	dropPoint.CFrame = place(Vector3.new(0, Config.Product.DropHeight, Config.Conveyor.StartZ))
 
-	-- ── Коллектор: неоновый блок + отдельная невидимая зона продажи ─
 	local collectorSlot = PlotService.EnsureSlotModel(visualsFolder, "Slot_Collector", {
 		Size = Config.Collector.SlotSize,
 		Color = Config.Collector.Color,
 		Material = Config.Collector.Material,
 		Reflectance = 0.1,
-		CanCollide = false,   -- блок продажи не должен перегораживать ленту
+		CanCollide = false,
 		Facing = Vector3.new(0, 0, -1),
 		Label = Config.Collector.Label,
 		Tag = Config.Tags.Collector,
@@ -619,9 +531,8 @@ function PlotService.EnsureLayout(plot: Model)
 	CollectionService:AddTag(sellZone, Config.Tags.Trigger)
 	sellZone:SetAttribute("Kind", "Collector")
 
-	-- ── По одной записи на каждую станцию из конфига ────────────
 	for _, def in ipairs(Config.Stations) do
-		-- Триггер станции: невидимый Part поперёк ленты, НЕ часть визуала
+
 		if def.Type == "Processor" then
 			local trigger = ensurePart(triggersFolder, "Trigger_" .. def.Id, {
 				Size = Config.Station.TriggerSize,
@@ -636,7 +547,6 @@ function PlotService.EnsureLayout(plot: Model)
 			trigger:SetAttribute("Enabled", false)
 		end
 
-		-- Пустой якорь под будущую модель станции: помечаем позицию
 		local anchor = ensurePart(triggersFolder, "Anchor_" .. def.Id, {
 			Size = Vector3.new(1, 1, 1),
 			Transparency = 1,
@@ -647,7 +557,6 @@ function PlotService.EnsureLayout(plot: Model)
 		anchor.CFrame = place(def.Offset, def.FacingDirection)
 		anchor:SetAttribute("StationId", def.Id)
 
-		-- Buy-кнопка: визуальный слот + отдельный невидимый триггер
 		PlotService.EnsureButtonSlot(plot, buttonsFolder, triggersFolder, place, {
 			Id = def.Id,
 			Label = def.Label,
@@ -656,9 +565,6 @@ function PlotService.EnsureLayout(plot: Model)
 		})
 	end
 
-	-- ── Площадка «занять плот» ──────────────────────────────────
-	-- Визуал — обычный слот, столкновение и надпись — отдельный
-	-- невидимый триггер, как у всех остальных кнопок.
 	local claimCfg = Config.Plot.Claim
 	local claimSlot = PlotService.EnsureSlotModel(visualsFolder, "Slot_ClaimPad", {
 		Size = claimCfg.Size,
@@ -687,7 +593,7 @@ function PlotService.EnsureLayout(plot: Model)
 		claimGui.Parent = claimTrigger
 	end
 	claimGui.Size = UDim2.fromScale(12, 4)
-	claimGui.StudsOffsetWorldSpace = Vector3.new(0, 3, 0)   -- ниже стрелки обучения
+	claimGui.StudsOffsetWorldSpace = Vector3.new(0, 3, 0)
 	claimGui.MaxDistance = 220
 	local claimText = claimGui:FindFirstChild("Text")
 	if not claimText then
@@ -708,7 +614,6 @@ function PlotService.EnsureLayout(plot: Model)
 		stroke.Parent = claimText
 	end
 
-	-- ── Кнопка ребёрна — та же механика, отдельная ветка ────────
 	PlotService.EnsureButtonSlot(plot, buttonsFolder, triggersFolder, place, {
 		Id = "Rebirth",
 		Label = Config.Rebirth.Label,
@@ -723,7 +628,6 @@ function PlotService.EnsureLayout(plot: Model)
 	PlotService.RefreshClaimPad(plot)
 end
 
--- Площадка видна, только пока плот свободен и включён ручной выбор
 function PlotService.RefreshClaimPad(plot: Model)
 	local cfg = Config.Plot.Claim
 	local visuals = plot:FindFirstChild("Visuals")
@@ -737,7 +641,7 @@ function PlotService.RefreshClaimPad(plot: Model)
 		return
 	end
 
-	local free = plot:GetAttribute("OwnerUserId") == 0 and Config.Plot.ClaimMode == "Manual"
+	local free = plot:GetAttribute("OwnerUserId") == 0
 	local shownCF = PlotService.LocalCF(plot, cfg.Offset + Vector3.new(0, cfg.Size.Y * 0.5, 0))
 	slot:PivotTo(free and shownCF or (shownCF - Vector3.new(0, cfg.HiddenDrop, 0)))
 	trigger.CanTouch = free
@@ -759,13 +663,11 @@ function PlotService.EnsureButtonSlot(plot, buttonsFolder, triggersFolder, place
 	})
 	slot:PivotTo(place(info.Offset + Vector3.new(0, Config.Buttons.PadSize.Y * 0.5, 0)))
 
-	-- Триггер кнопки — отдельный невидимый Part. На нём же висит ценник,
-	-- чтобы подпись пережила замену визуальной модели из Toolbox.
 	local trigger = ensurePart(triggersFolder, "Button_" .. info.Id, {
 		Size = Config.Buttons.TriggerSize,
 		Transparency = 1,
 		CanCollide = false,
-		CanTouch = false,   -- включится, когда кнопка станет видимой
+		CanTouch = false,
 	})
 	trigger.CFrame = place(info.Offset + Vector3.new(0, Config.Buttons.TriggerSize.Y * 0.5, 0))
 	CollectionService:AddTag(trigger, Config.Tags.Trigger)
@@ -804,16 +706,10 @@ function PlotService.EnsureButtonSlot(plot, buttonsFolder, triggersFolder, place
 		stroke.Parent = text
 	end
 
-	-- Стартовое состояние: кнопка спрятана, ButtonService поднимет нужные
 	slot:SetAttribute("Shown", false)
 	return slot
 end
 
--- ═══════════════════════════════════════════════════════════════
--- ЩИТ С НАЗВАНИЕМ ЗАВОДА
--- Отдельная конструкция на двух столбах в проходе перед плотами.
--- Надпись нанесена на ОБЕ грани щита: её видно и от спавна, и из цеха.
--- ═══════════════════════════════════════════════════════════════
 function PlotService.EnsureFactorySign(): Model?
 	local cfg = Config.FactorySign
 	local folder = ensureFolder(workspace, "FactorySign")
@@ -836,11 +732,9 @@ function PlotService.EnsureFactorySign(): Model?
 	local board = slot.PrimaryPart
 	board.CFrame = CFrame.new(centerX, groundY + cfg.BoardHeight, cfg.Z)
 
-	-- Надпись с двух сторон
 	PlotService.AddLabel(board, cfg.Text, cfg.TextColor, Enum.NormalId.Front, "SignFront")
 	PlotService.AddLabel(board, cfg.Text, cfg.TextColor, Enum.NormalId.Back, "SignBack")
 
-	-- Жёлтая рамка: чуть больший щит позади основного
 	local frame = ensurePart(slot, "Frame", {
 		Size = cfg.BoardSize + Vector3.new(cfg.FrameDepth * 2, cfg.FrameDepth * 2, -0.6),
 		Color = cfg.FrameColor,
@@ -852,7 +746,6 @@ function PlotService.EnsureFactorySign(): Model?
 	})
 	frame.CFrame = board.CFrame
 
-	-- Столбы до пола
 	local postHeight = cfg.BoardHeight - cfg.BoardSize.Y * 0.5
 	for index, side in ipairs({ -1, 1 }) do
 		local post = ensurePart(slot, "Post_" .. index, {
@@ -869,21 +762,12 @@ function PlotService.EnsureFactorySign(): Model?
 	return slot
 end
 
--- ═══════════════════════════════════════════════════════════════
--- ЗЕМЛЯ — одна большая серая лего-плита под всеми плотами
---
--- Рельеф даёт не сетка деталей, а старая поверхность
--- TopSurface = Enum.SurfaceType.Studs: движок рисует классические
--- лего-шипы прямо на грани детали. Ноль лишних Part'ов, и выглядит
--- ровно как пол в ретро-плейсах.
--- ═══════════════════════════════════════════════════════════════
 function PlotService.EnsureGround(): BasePart?
 	local cfg = Config.Ground
 	if not cfg.Enabled then
 		return nil
 	end
 
-	-- Габарит считаем от границ карты, чтобы плита всегда была шире забора
 	local plotSize = Config.Plot.Size
 	local bounds = Config.WorldBounds
 	local totalWidth = (Config.Plot.Count - 1) * Config.Plot.Spacing
@@ -904,7 +788,7 @@ function PlotService.EnsureGround(): BasePart?
 	ground.Size = Vector3.new(halfX * 2, cfg.Thickness, backZ - frontZ)
 	ground.CFrame = CFrame.new(
 		Config.Plot.Origin.X,
-		bounds.GroundY - cfg.Thickness * 0.5,   -- верх плиты ровно на уровне земли
+		bounds.GroundY - cfg.Thickness * 0.5,
 		(backZ + frontZ) * 0.5)
 	ground.Color = cfg.Color
 	ground.Material = cfg.Material
@@ -912,7 +796,6 @@ function PlotService.EnsureGround(): BasePart?
 	ground.TopSurface = cfg.Surface
 	ground.BottomSurface = Enum.SurfaceType.Smooth
 
-	-- Тёмная сетка-текстура поверх шипов только рябит
 	if not cfg.KeepGridTexture then
 		for _, child in ipairs(ground:GetChildren()) do
 			if child:IsA("Texture") or child:IsA("Decal") then
@@ -923,14 +806,6 @@ function PlotService.EnsureGround(): BasePart?
 	return ground
 end
 
--- ═══════════════════════════════════════════════════════════════
--- СТЕНА ЦЕХА — один прямой прогон со всеми деталями
---
--- Панель + цоколь + разметочная полоса + карниз + колонны внутрь +
--- ленточное остекление + техническая труба. Строится тем же способом,
--- что и забор: cfFor(position, dir) переводит точку в мировые координаты.
--- inward — направление «внутрь цеха», туда смотрят колонны и труба.
--- ═══════════════════════════════════════════════════════════════
 local function buildWallRun(parent: Instance, runName: string, cfg, cfFor, fromPoint: Vector3, toPoint: Vector3, inward: Vector3): Model?
 	local delta = toPoint - fromPoint
 	local length = delta.Magnitude
@@ -948,7 +823,6 @@ local function buildWallRun(parent: Instance, runName: string, cfg, cfFor, fromP
 		model.Parent = parent
 	end
 
-	-- Полосы вдоль всего прогона: имя, размер, цвет, материал, высота центра
 	local function band(name: string, size: Vector3, color: Color3, material: Enum.Material, y: number, transparency: number?)
 		local part = ensurePart(model, name, {
 			Size = size,
@@ -964,8 +838,6 @@ local function buildWallRun(parent: Instance, runName: string, cfg, cfFor, fromP
 		return part
 	end
 
-	-- Основная панель — она же Placeholder, весь прогон меняется
-	-- на модель из Toolbox одной операцией
 	local panel = band("Placeholder", Vector3.new(cfg.Thickness, cfg.Height, length),
 		cfg.PanelColor, cfg.PanelMaterial, cfg.Height * 0.5)
 	model.PrimaryPart = panel
@@ -977,7 +849,6 @@ local function buildWallRun(parent: Instance, runName: string, cfg, cfFor, fromP
 	band("Cap", Vector3.new(cfg.Thickness + 2.4, cfg.CapHeight, length),
 		cfg.CapColor, Enum.Material.Metal, cfg.Height - cfg.CapHeight * 0.5)
 
-	-- Колонны через равные промежутки, выступают внутрь цеха
 	local spans = math.max(1, math.floor(length / cfg.PillarEvery + 0.5))
 	for i = 0, spans do
 		local point = fromPoint + delta * (i / spans) + inward * (cfg.PillarDepth * 0.5)
@@ -993,7 +864,6 @@ local function buildWallRun(parent: Instance, runName: string, cfg, cfFor, fromP
 		pillar.CFrame = cfFor(point + Vector3.new(0, cfg.Height * 0.51, 0), direction)
 	end
 
-	-- Ленточное остекление в пролётах между колоннами
 	if cfg.WindowEnabled then
 		local spanLength = length / spans
 		local glassLength = spanLength - cfg.PillarWidth - cfg.WindowInset * 2
@@ -1015,8 +885,6 @@ local function buildWallRun(parent: Instance, runName: string, cfg, cfFor, fromP
 		end
 	end
 
-	-- Техническая труба под карнизом. У цилиндра ось — X, поэтому
-	-- доворачиваем прогон на 90 градусов вокруг Y.
 	if cfg.PipeEnabled then
 		local pipe = ensurePart(model, "Pipe", {
 			Shape = Enum.PartType.Cylinder,
@@ -1038,11 +906,6 @@ local function buildWallRun(parent: Instance, runName: string, cfg, cfFor, fromP
 	return model
 end
 
--- ═══════════════════════════════════════════════════════════════
--- ГРАНИЦЫ КАРТЫ = стены цеха
--- Видимые стены по периметру плюс невидимая стена на всю высоту,
--- чтобы игрок не улетел за карту.
--- ═══════════════════════════════════════════════════════════════
 function PlotService.EnsureWorldBounds(): Folder?
 	local cfg = Config.WorldBounds
 	local folder = ensureFolder(workspace, "WorldBounds")
@@ -1068,7 +931,6 @@ function PlotService.EnsureWorldBounds(): Folder?
 	folder:ClearAllChildren()
 	folder:SetAttribute("Signature", signature)
 
-	-- Координаты уже мировые, переводить нечего
 	local function worldCF(position: Vector3, dir: Vector3?): CFrame
 		if dir and dir.Magnitude > 0.01 then
 			return CFrame.lookAt(position, position + dir.Unit)
@@ -1093,10 +955,6 @@ function PlotService.EnsureWorldBounds(): Folder?
 		Vector3.new(minX + inset + corner, groundY, frontZ + inset), Vector3.new(maxX - inset - corner, groundY, frontZ + inset),
 		Vector3.new(0, 0, 1))
 
-	-- Вывеска цеха на дальней стене. Отдельная деталь без поворота:
-	-- её грань Front смотрит вдоль -Z, то есть внутрь зала. Вешать
-	-- надпись на саму панель нельзя — та развёрнута вдоль прогона
-	-- и надпись уходила бы наружу.
 	if wall.SignText then
 		local sign = ensurePart(walls, "FactorySign", {
 			Size = Vector3.new((maxX - minX) * 0.3, wall.Height * 0.3, 1),
@@ -1111,7 +969,6 @@ function PlotService.EnsureWorldBounds(): Folder?
 		PlotService.AddLabel(sign, wall.SignText, wall.SignColor, Enum.NormalId.Front)
 	end
 
-	-- Невидимая стена: именно она не выпускает игрока
 	local barriers = ensureFolder(folder, "Barriers")
 	local barrierY = groundY + cfg.BarrierHeight * 0.5
 	local depth = backZ - frontZ
@@ -1134,9 +991,7 @@ function PlotService.EnsureWorldBounds(): Folder?
 	barrier("Barrier_South", Vector3.new(centerX, barrierY, frontZ), Vector3.new(width + cfg.BarrierThickness, cfg.BarrierHeight, cfg.BarrierThickness))
 	return folder
 end
--- ═══════════════════════════════════════════════════════════════
--- КОНВЕЙЕР: скорость через AssemblyLinearVelocity
--- ═══════════════════════════════════════════════════════════════
+
 function PlotService.RefreshConveyor(plot: Model)
 	local conveyorFolder = plot:FindFirstChild("Conveyor")
 	if not conveyorFolder then
@@ -1146,8 +1001,7 @@ function PlotService.RefreshConveyor(plot: Model)
 		if slot:IsA("Model") and CollectionService:HasTag(slot, Config.Tags.Conveyor) then
 			local primary = slot.PrimaryPart
 			if primary then
-				-- Направление берём из ориентации детали, а не из хардкода,
-				-- скорость домножаем на купленные ускорители ленты
+
 				local scale = plot:GetAttribute("ConveyorScale") or 1
 				local velocity = primary.CFrame.LookVector * (Config.Conveyor.Speed * scale)
 				for _, part in ipairs(slot:GetDescendants()) do
@@ -1161,9 +1015,6 @@ function PlotService.RefreshConveyor(plot: Model)
 	end
 end
 
--- ═══════════════════════════════════════════════════════════════
--- ЖИЗНЕННЫЙ ЦИКЛ ПЛОТОВ
--- ═══════════════════════════════════════════════════════════════
 function PlotService.RegisterSetup(fn)
 	table.insert(setupHooks, fn)
 end
@@ -1172,7 +1023,6 @@ function PlotService.RegisterCleanup(fn)
 	table.insert(cleanupHooks, fn)
 end
 
--- Касание зелёной площадки: игрок сам выбрал, какой плот занять
 local claimLock = {}
 local function bindClaimPad(trigger: BasePart)
 	if trigger:GetAttribute("Bound") then
@@ -1193,7 +1043,6 @@ local function bindClaimPad(trigger: BasePart)
 			return
 		end
 
-		-- Debounce: Touched на площадке срабатывает пачками
 		local now = os.clock()
 		if claimLock[player] and now - claimLock[player] < Config.Plot.Claim.Cooldown then
 			return
@@ -1236,12 +1085,10 @@ function PlotService.Init()
 		local x = Config.Plot.Origin.X - totalWidth * 0.5 + (i - 1) * Config.Plot.Spacing
 		plot:PivotTo(CFrame.new(x, Config.Plot.Origin.Y, Config.Plot.Origin.Z))
 
-		-- После переноса пересчитываем всё, что зависит от мировых координат
 		PlotService.EnsureLayout(plot)
 		PlotService.RefreshConveyor(plot)
 	end
 
-	-- Площадки «занять плот» ищем по тегу, как и все остальные триггеры
 	for _, trigger in ipairs(CollectionService:GetTagged(Config.Tags.Trigger)) do
 		if trigger:GetAttribute("Kind") == "Claim" then
 			bindClaimPad(trigger)
@@ -1257,7 +1104,6 @@ function PlotService.Init()
 		claimLock[player] = nil
 	end)
 
-	-- Если человек подменил модель конвейера из Toolbox — просто пере-применяем скорость
 	CollectionService:GetInstanceAddedSignal(Config.Tags.Conveyor):Connect(function(slot)
 		task.defer(function()
 			local plot = PlotService.GetPlotFrom(slot)
@@ -1277,17 +1123,15 @@ function PlotService.GetFreePlot(): Model?
 	return nil
 end
 
--- Занять КОНКРЕТНЫЙ плот. Через неё проходят оба режима: и ручной
--- выбор с площадки, и автовыдача при входе.
 function PlotService.ClaimPlot(player: Player, plot: Model): boolean
 	if ownedByPlayer[player] then
-		return false          -- у игрока уже есть плот
+		return false
 	end
 	if not plot or plot.Parent ~= plotsFolder then
 		return false
 	end
 	if plot:GetAttribute("OwnerUserId") ~= 0 then
-		return false          -- плот уже занят
+		return false
 	end
 
 	plot:SetAttribute("OwnerUserId", player.UserId)
@@ -1304,20 +1148,6 @@ function PlotService.ClaimPlot(player: Player, plot: Model): boolean
 	return true
 end
 
--- Автовыдача: берём первый свободный (Config.Plot.ClaimMode = "Auto")
-function PlotService.AssignPlot(player: Player): Model?
-	if ownedByPlayer[player] then
-		return ownedByPlayer[player]
-	end
-	local plot = PlotService.GetFreePlot()
-	if not plot then
-		warn(("[PlotService] нет свободных плотов для %s"):format(player.Name))
-		return nil
-	end
-	return PlotService.ClaimPlot(player, plot) and plot or nil
-end
-
-
 function PlotService.ReleasePlot(player: Player)
 	local plot = ownedByPlayer[player]
 	if not plot then
@@ -1330,7 +1160,6 @@ function PlotService.ReleasePlot(player: Player)
 		if not ok then warn("[PlotService] cleanup hook: " .. tostring(err)) end
 	end
 
-	-- Полная очистка: снимаем купленные станции и обнуляем владельца
 	local slots = plot:FindFirstChild("Slots")
 	if slots then slots:ClearAllChildren() end
 	local products = plot:FindFirstChild("Products")
@@ -1369,7 +1198,6 @@ function PlotService.GetOwner(plot: Model): Player?
 	return Players:GetPlayerByUserId(userId)
 end
 
--- Подняться от любой детали до её плота
 function PlotService.GetPlotFrom(instance: Instance): Model?
 	local current = instance
 	while current and current.Parent ~= plotsFolder do
@@ -1385,10 +1213,51 @@ function PlotService.GetAllPlots(): { Model }
 	return plotsFolder:GetChildren()
 end
 
--- Ставит модель станции из ServerStorage/Stations в слот плота
+function PlotService.PlayStationSound(plot: Model, stationId: string)
+	if not Config.Sound.Enabled then
+		return
+	end
+
+	local def = Config.GetStation(stationId)
+	local cfg = def and def.Sfx and Config.Sound.Stations[def.Sfx]
+	if not cfg then
+		return
+	end
+
+	local slots = plot:FindFirstChild("Slots")
+	local model = slots and slots:FindFirstChild("Slot_" .. stationId)
+	local part = model and model.PrimaryPart
+	if not part then
+		return
+	end
+
+	local sound = part:FindFirstChild("StationSfx")
+	if not sound then
+		sound = Instance.new("Sound")
+		sound.Name = "StationSfx"
+		sound.SoundId = cfg.Id
+		sound.Volume = cfg.Volume * Config.Sound.MasterVolume
+		sound.RollOffMode = Enum.RollOffMode.InverseTapered
+		sound.RollOffMinDistance = cfg.MinDistance or 8
+		sound.RollOffMaxDistance = cfg.MaxDistance or 50
+		sound.Parent = part
+	end
+
+	local now = os.clock()
+	if now - (sound:GetAttribute("LastPlay") or 0) < (cfg.MinInterval or 0) then
+		return
+	end
+	sound:SetAttribute("LastPlay", now)
+
+	local pitch = cfg.Pitch
+	sound.PlaybackSpeed = pitch and (pitch[1] + math.random() * (pitch[2] - pitch[1])) or 1
+	sound.TimePosition = 0
+	sound:Play()
+end
+
 function PlotService.PlaceStation(plot: Model, def): Model?
 	if def.PlaceModel == false then
-		return nil   -- у этой станции нет модели: только кнопка и эффект
+		return nil
 	end
 	local prefabs = ServerStorage:FindFirstChild("Stations")
 	local prefab = prefabs and prefabs:FindFirstChild("Slot_" .. def.Id)
@@ -1413,7 +1282,7 @@ function PlotService.PlaceStation(plot: Model, def): Model?
 	for _, part in ipairs(model:GetDescendants()) do
 		if part:IsA("BasePart") then
 			part.Anchored = true
-			part.CanCollide = false   -- станция не мешает игроку ходить
+			part.CanCollide = false
 		end
 	end
 	CollectionService:AddTag(model, Config.Tags.Station)

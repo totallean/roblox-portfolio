@@ -1,14 +1,3 @@
---[[
-	CurrencyService — единственный источник правды по валюте.
-	Клиент НИЧЕГО не начисляет и не валидирует: он только получает
-	готовое число через RemoteEvent CurrencyChanged.
-
-	Множитель дохода собирается из провайдеров:
-	  • базовый бонус за ребёрны считается здесь (данные лежат в профиле);
-	  • геймпассы и временные бусты регистрирует MonetizationService
-	    через RegisterMultiplierProvider — так нет циклической зависимости.
-]]
-
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 
@@ -16,10 +5,9 @@ local DataService = require(script.Parent.DataService)
 
 local CurrencyService = {}
 
--- Сигнал: (player, balance)
 CurrencyService.Changed = Instance.new("BindableEvent")
 
-local providers = {}   -- список функций (player) -> number
+local providers = {}
 local remotes
 
 local function getRemote(name: string): RemoteEvent
@@ -31,7 +19,6 @@ function CurrencyService.Init()
 	remotes = ReplicatedStorage:WaitForChild("Remotes")
 end
 
--- Другие сервисы добавляют свои множители сюда
 function CurrencyService.RegisterMultiplierProvider(fn)
 	table.insert(providers, fn)
 end
@@ -41,7 +28,6 @@ function CurrencyService.Get(player: Player): number
 	return data and data.Currency or 0
 end
 
--- Итоговый множитель дохода: ребёрны × геймпассы × активные бусты
 function CurrencyService.GetIncomeMultiplier(player: Player): number
 	local data = DataService.Get(player)
 	if not data then
@@ -57,7 +43,6 @@ function CurrencyService.GetIncomeMultiplier(player: Player): number
 	return mult
 end
 
--- Отправить актуальный баланс клиенту (UI обновляется в реальном времени)
 function CurrencyService.Push(player: Player)
 	local data = DataService.Get(player)
 	if not data then
@@ -66,9 +51,6 @@ function CurrencyService.Push(player: Player)
 	getRemote("CurrencyChanged"):FireClient(player, data.Currency, CurrencyService.GetIncomeMultiplier(player))
 end
 
--- countAsEarned = false → начисление НЕ идёт в TotalEarned.
--- Нужно для наград и подарков: иначе выплата за достижение
--- сама же открывала бы достижения «заработай N».
 function CurrencyService.Add(player: Player, amount: number, reason: string?, countAsEarned: boolean?): number
 	local data = DataService.Get(player)
 	if not data then
@@ -87,7 +69,6 @@ function CurrencyService.Add(player: Player, amount: number, reason: string?, co
 	return amount
 end
 
--- Единственный легальный способ списать валюту
 function CurrencyService.TrySpend(player: Player, amount: number, reason: string?): boolean
 	local data = DataService.Get(player)
 	if not data then
@@ -116,7 +97,6 @@ function CurrencyService.Set(player: Player, amount: number)
 	CurrencyService.Changed:Fire(player, data.Currency)
 end
 
--- Грубая оценка дохода в минуту — нужна Instant Cash и UI-цели
 function CurrencyService.EstimateIncomePerMinute(player: Player): number
 	local data = DataService.Get(player)
 	if not data then
@@ -130,7 +110,7 @@ function CurrencyService.EstimateIncomePerMinute(player: Player): number
 			if def.Type == "Processor" then
 				value *= (def.Multiplier or 1)
 			end
-			-- Ускорение линии встроено в станции, отдельного типа нет
+
 			intervalScale *= (def.DropIntervalMultiplier or 1)
 		end
 	end

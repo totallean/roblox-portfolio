@@ -1,32 +1,12 @@
---[[
-	FTUEController — обучение в стиле референса.
-
-	На каждом шаге:
-	  • фон затемняется (на «шагах действия», на шаге ожидания — нет);
-	  • по центру крупная надпись-инструкция;
-	  • на цели пульсирует рамка и качается курсор-рука.
-
-	Курсор ОДИН и работает и по объектам мира, и по кнопкам интерфейса:
-	мировая точка проецируется на экран через Camera:WorldToViewportPoint,
-	элемент интерфейса берётся по AbsolutePosition. Благодаря этому рука
-	всегда рисуется поверх затемнения, а не тонет под ним.
-
-	Шаги:
-	  1 занять цех → 2 дождаться продажи → 3 купить станцию → 4 открыть награды
-
-	Отдельно живёт постоянная ЗЕЛЁНАЯ стрелка над текущей выгодной
-	покупкой — она работает всю игру, а не только в обучении.
-
-	Путь: StarterPlayer/StarterPlayerScripts/Client/FTUEController (LocalScript)
-]]
-
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local GuiService = game:GetService("GuiService")
 
-local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared:WaitForChild("Config"))
+local Sfx = require(Shared:WaitForChild("Sfx"))
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 
 local player = Players.LocalPlayer
@@ -42,10 +22,6 @@ for index in pairs(ftueCfg.Steps) do
 	stepCount = math.max(stepCount, index)
 end
 
--- ═══════════════════════════════════════════════════════════════
--- ЗАТЕМНЕНИЕ + КРУПНАЯ НАДПИСЬ
--- Active = false, иначе слой съедал бы клики по кнопкам под ним.
--- ═══════════════════════════════════════════════════════════════
 local overlayGui = Instance.new("ScreenGui")
 overlayGui.Name = "FTUEOverlay"
 overlayGui.ResetOnSpawn = false
@@ -99,10 +75,6 @@ chipStroke.Color = Config.Style.StrokeColor
 chipStroke.Thickness = Config.Style.WorldStroke
 chipStroke.Parent = stepChip
 
--- ═══════════════════════════════════════════════════════════════
--- КУРСОР-РУКА + РАМКА НА ЦЕЛИ
--- Отдельный слой выше затемнения, чтобы подсказка не тускнела.
--- ═══════════════════════════════════════════════════════════════
 local pointerGui = Instance.new("ScreenGui")
 pointerGui.Name = "FTUEPointer"
 pointerGui.ResetOnSpawn = false
@@ -110,10 +82,17 @@ pointerGui.IgnoreGuiInset = true
 pointerGui.DisplayOrder = 21
 pointerGui.Parent = playerGui
 
+local origin = Instance.new("Frame")
+origin.Name = "Origin"
+origin.Size = UDim2.fromScale(1, 1)
+origin.BackgroundTransparency = 1
+origin.Active = false
+origin.Parent = pointerGui
+
 local ring = Instance.new("Frame")
 ring.Name = "Ring"
 ring.AnchorPoint = Vector2.new(0.5, 0.5)
--- Лёгкая заливка: цель под затемнением остаётся заметной
+
 ring.BackgroundColor3 = cursorCfg.RingColor
 ring.BackgroundTransparency = 0.82
 ring.BorderSizePixel = 0
@@ -132,7 +111,7 @@ ringStroke.Parent = ring
 
 local cursor = Instance.new("TextLabel")
 cursor.Name = "Cursor"
--- Якорь по нижнему краю: рука указывает вниз, поэтому висит НАД целью
+
 cursor.AnchorPoint = Vector2.new(0.5, 1)
 cursor.Size = UDim2.fromOffset(cursorCfg.Size, cursorCfg.Size)
 cursor.BackgroundTransparency = 1
@@ -144,11 +123,6 @@ cursor.Active = false
 cursor.Visible = false
 cursor.Parent = pointerGui
 
--- ═══════════════════════════════════════════════════════════════
--- ПОСТОЯННАЯ СТРЕЛКА ЦЕЛИ (3D, живёт всю игру)
--- По умолчанию выключена: ярлык GOAL над каждой всплывающей кнопкой
--- дублировал её собственный ценник. Инстансы при этом даже не создаются.
--- ═══════════════════════════════════════════════════════════════
 local goalAnchor: Part? = nil
 local goalBillboard: BillboardGui? = nil
 local goalHighlight: Highlight? = nil
@@ -169,7 +143,7 @@ if goalCfg.Enabled then
 	goalBillboard = Instance.new("BillboardGui")
 	goalBillboard.Name = "GoalArrow"
 	goalBillboard.Adornee = goalAnchor
-	-- AlwaysOnTop = true в этой сборке не рисуется вовсе, проверено маркерами
+
 	goalBillboard.AlwaysOnTop = false
 	goalBillboard.Size = UDim2.fromScale(8, 8)
 	goalBillboard.MaxDistance = 340
@@ -225,9 +199,6 @@ tutorialHighlight.DepthMode = Enum.HighlightDepthMode.Occluded
 tutorialHighlight.Enabled = false
 tutorialHighlight.Parent = playerGui
 
--- ═══════════════════════════════════════════════════════════════
--- ПОИСК ЦЕЛЕЙ
--- ═══════════════════════════════════════════════════════════════
 local function findOwnPlot(): Model?
 	local plots = workspace:FindFirstChild("Plots")
 	if not plots then
@@ -241,7 +212,6 @@ local function findOwnPlot(): Model?
 	return nil
 end
 
--- Ближайшая свободная площадка «занять плот»
 local function findNearestClaimPad(): (BasePart?, Instance?)
 	local plots = workspace:FindFirstChild("Plots")
 	if not plots then
@@ -268,7 +238,6 @@ local function findNearestClaimPad(): (BasePart?, Instance?)
 	return bestPad, bestSlot
 end
 
--- Первая ВИДИМАЯ Buy-кнопка: сначала цель от сервера, иначе по конфигу
 local function findGoalButton(plot: Model): (BasePart?, Instance?)
 	local buttons = plot:FindFirstChild("Buttons")
 	if not buttons then
@@ -293,19 +262,17 @@ local function findGoalButton(plot: Model): (BasePart?, Instance?)
 			return part, model
 		end
 	end
-	-- Всё куплено → стрелку цели не показываем: у ребёрна своя плашка
+
 	return nil, nil
 end
 
--- Кнопка НАГРАДЫ в интерфейсе
 local function findAchievementsButton(): GuiObject?
 	local gui = playerGui:FindFirstChild("ButterUI")
 	if not gui then
 		return nil
 	end
 	for _, child in ipairs(gui:GetChildren()) do
-		-- Ищем по тому же тексту, что задан в конфиге: сменишь язык —
-		-- обучение продолжит находить кнопку
+
 		if child:IsA("TextButton") and child.Text == Config.Text.RewardsButton then
 			return child
 		end
@@ -313,7 +280,6 @@ local function findAchievementsButton(): GuiObject?
 	return nil
 end
 
--- Возвращает: worldPart, highlightTarget, guiTarget
 local function resolveTarget(step: number)
 	local info = ftueCfg.Steps[step]
 	if not info then
@@ -347,15 +313,12 @@ local function resolveTarget(step: number)
 	return nil, nil, nil
 end
 
--- ═══════════════════════════════════════════════════════════════
--- ПРИМЕНЕНИЕ ШАГА
--- ═══════════════════════════════════════════════════════════════
 local function applyStep(step: number)
 	currentStep = step
 	local info = ftueCfg.Steps[step]
 
 	if not info then
-		-- Обучение пройдено: гасим всё
+
 		TweenService:Create(dim, TweenInfo.new(ftueCfg.Overlay.FadeTime), { BackgroundTransparency = 1 }):Play()
 		task.delay(ftueCfg.Overlay.FadeTime, function()
 			if not ftueCfg.Steps[currentStep] then
@@ -374,12 +337,11 @@ local function applyStep(step: number)
 	banner.Visible = true
 	stepChip.Text = (Config.Text.StepCounter):format(step, stepCount)
 	stepChip.Visible = true
+	Sfx.Play("Notify")
 
-	-- Плавное появление надписи
 	banner.TextTransparency = 1
 	TweenService:Create(banner, TweenInfo.new(0.25), { TextTransparency = 0 }):Play()
 
-	-- Затемняем только «шаги действия»
 	if info.Dim then
 		dim.Visible = true
 		TweenService:Create(dim, TweenInfo.new(ftueCfg.Overlay.FadeTime), {
@@ -402,9 +364,6 @@ Remotes.StateSync.OnClientEvent:Connect(function(state)
 	goalId = state.Goal and state.Goal.Id or nil
 end)
 
--- ═══════════════════════════════════════════════════════════════
--- ПОКАДРОВОЕ ОБНОВЛЕНИЕ
--- ═══════════════════════════════════════════════════════════════
 local retargetAccum = 0
 local bobTime = 0
 local worldTarget: BasePart? = nil
@@ -446,8 +405,6 @@ RunService.RenderStepped:Connect(function(dt)
 			tutorialHighlight.Enabled = false
 		end
 
-		-- Постоянная стрелка цели. На шаге «купи станцию» она бы
-		-- дублировала жёлтый курсор, поэтому там её прячем.
 		if goalBillboard then
 			local goalPart, goalModel = nil, nil
 			local info = ftueCfg.Steps[currentStep]
@@ -468,21 +425,19 @@ RunService.RenderStepped:Connect(function(dt)
 		end
 	end
 
-	-- Пульсация рамки
 	local pulse = 0.5 + 0.5 * math.sin(bobTime * cursorCfg.Speed)
 	ringStroke.Transparency = 0.15 + pulse * 0.45
 	local bob = math.sin(bobTime * cursorCfg.Speed) * cursorCfg.Bob
 
-	-- Курсор: кнопка интерфейса имеет приоритет над объектом мира
 	if guiTarget and guiTarget.Visible then
-		local centre = guiTarget.AbsolutePosition + guiTarget.AbsoluteSize * 0.5
+		local centre = guiTarget.AbsolutePosition + guiTarget.AbsoluteSize * 0.5 - origin.AbsolutePosition
 		placePointer(centre, guiTarget.AbsoluteSize, bob)
 	elseif worldTarget and worldTarget.Parent and workspace.CurrentCamera then
 		local viewport, onScreen = workspace.CurrentCamera:WorldToViewportPoint(worldTarget.Position)
 		if onScreen and viewport.Z > 0 then
 			local inset = GuiService:GetGuiInset()
 			local centre = Vector2.new(viewport.X, viewport.Y + inset.Y)
-			-- Размер рамки прикидываем по габариту детали на экране
+
 			local scale = math.clamp(900 / math.max(viewport.Z, 1), 30, 220)
 			placePointer(centre, Vector2.new(scale, scale * 0.6), bob)
 		else
@@ -494,7 +449,6 @@ RunService.RenderStepped:Connect(function(dt)
 		cursor.Visible = false
 	end
 
-	-- Постоянная стрелка едет за своей целью
 	if goalAnchor and goalTarget and goalTarget.Parent then
 		local goalBob = math.sin(bobTime * goalCfg.Speed) * goalCfg.Bob
 		goalAnchor.CFrame = CFrame.new(goalTarget.Position + Vector3.new(0, goalLift + goalBob, 0))

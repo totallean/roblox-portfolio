@@ -1,17 +1,3 @@
---[[
-	DropperService — спавн продуктов, тайминги и пул объектов.
-
-	Здесь ЕДИНСТВЕННЫЙ Producer из конфига (Butter Extruder) роняет брусок
-	масла на ленту. Больше никто продукты не создаёт.
-
-	Технические требования, которые закрывает файл:
-	  • object pooling — Instance.new только при разогреве пула;
-	  • жёсткий лимит активных продуктов на плот (старые уходят первыми);
-	  • тайминги через RunService.Heartbeat с накоплением дельты
-	    (никаких while true do wait() end);
-	  • всё состояние продукта — в атрибутах (Stage / Value / …).
-]]
-
 local ServerStorage = game:GetService("ServerStorage")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
@@ -23,17 +9,12 @@ local PlotService = require(script.Parent.PlotService)
 local DropperService = {}
 
 local poolFolder: Folder
-local pool = {}            -- свободные детали
-local created = 0          -- сколько всего создано за сессию
-local dropState = {}       -- [plot] = { Accum = 0, Enabled = false }
-local activeByPlot = {}    -- [plot] = { упорядоченный список активных продуктов }
+local pool = {}
+local created = 0
+local dropState = {}
+local activeByPlot = {}
 local lifetimeAccum = 0
 
--- ═══════════════════════════════════════════════════════════════
--- СОЗДАНИЕ ДЕТАЛИ ПУЛА
--- Все дочерние объекты создаются ОДИН раз здесь, чтобы на дропе
--- не было ни одного Instance.new.
--- ═══════════════════════════════════════════════════════════════
 local function createProduct(): BasePart
 	local part = Instance.new("Part")
 	part.Name = "ButterStick"
@@ -47,7 +28,6 @@ local function createProduct(): BasePart
 	part.BottomSurface = Enum.SurfaceType.Smooth
 	part.CustomPhysicalProperties = PhysicalProperties.new(0.7, 0.6, 0.1, 1, 1)
 
-	-- Штамп от Stamp Press: заранее созданный SurfaceGui, включается на станции
 	local stamp = Instance.new("SurfaceGui")
 	stamp.Name = "Stamp"
 	stamp.Face = Enum.NormalId.Top
@@ -75,21 +55,17 @@ local function createProduct(): BasePart
 	return part
 end
 
--- ═══════════════════════════════════════════════════════════════
--- ПУЛ
--- ═══════════════════════════════════════════════════════════════
 local function acquire(): BasePart?
 	local part = table.remove(pool)
 	if part then
 		return part
 	end
 	if created >= Config.Product.PoolHardCap then
-		return nil   -- предохранитель: не раздуваем сцену бесконечно
+		return nil
 	end
 	return createProduct()
 end
 
--- Возврат в пул: полный сброс состояния, без Destroy
 function DropperService.Release(product: BasePart)
 	if not product or not product.Parent then
 		return
@@ -145,9 +121,6 @@ function DropperService.ClearPlot(plot: Model)
 	end
 end
 
--- ═══════════════════════════════════════════════════════════════
--- ДРОП
--- ═══════════════════════════════════════════════════════════════
 local function drop(plot: Model)
 	local owner = PlotService.GetOwner(plot)
 	if not owner then
@@ -160,9 +133,8 @@ local function drop(plot: Model)
 		activeByPlot[plot] = list
 	end
 
-	-- Жёсткий лимит: старые продукты удаляются первыми
 	while #list >= Config.Product.MaxActive do
-		local oldest = table.remove(list, 1)   -- FIFO: старые уходят первыми
+		local oldest = table.remove(list, 1)
 		if not oldest then
 			break
 		end
@@ -181,7 +153,6 @@ local function drop(plot: Model)
 	product.Transparency = 0
 	product.Reflectance = 0
 
-	-- Всё состояние продукта — через атрибуты, никаких глобальных таблиц
 	product:SetAttribute("Stage", 0)
 	product:SetAttribute("Value", def.BaseValue)
 	product:SetAttribute("OwnerUserId", owner.UserId)
@@ -196,11 +167,10 @@ local function drop(plot: Model)
 
 	CollectionService:AddTag(product, Config.Tags.Product)
 	table.insert(list, product)
+
+	PlotService.PlayStationSound(plot, def.Id)
 end
 
--- ═══════════════════════════════════════════════════════════════
--- ВКЛЮЧЕНИЕ ПРОИЗВОДИТЕЛЯ
--- ═══════════════════════════════════════════════════════════════
 function DropperService.EnableStation(plot: Model, def)
 	if def.Type ~= "Producer" then
 		return
@@ -220,9 +190,6 @@ function DropperService.GetActiveCount(plot: Model): number
 	return list and #list or 0
 end
 
--- ═══════════════════════════════════════════════════════════════
--- INIT
--- ═══════════════════════════════════════════════════════════════
 function DropperService.Init()
 	poolFolder = ServerStorage:FindFirstChild("ProductPool")
 	if not poolFolder then
@@ -232,7 +199,6 @@ function DropperService.Init()
 	end
 	poolFolder:ClearAllChildren()
 
-	-- Разогрев пула: единственное место, где идёт Instance.new пачкой
 	for _ = 1, Config.Product.PoolSize do
 		local part = createProduct()
 		part.CFrame = CFrame.new(0, -500, 0)
@@ -243,12 +209,11 @@ function DropperService.Init()
 	local producer = Config.GetStation("Extruder")
 
 	RunService.Heartbeat:Connect(function(dt)
-		-- 1) Дроп по накопленной дельте
+
 		for plot, state in pairs(dropState) do
 			if state.Enabled and plot.Parent then
 				state.Accum += dt
-				-- Ускорители ленты сокращают интервал дропа.
-				-- Множитель кладёт на плот Main при выдаче станции.
+
 				local scale = plot:GetAttribute("DropIntervalScale") or 1
 				local interval = math.max(0.1, producer.DropInterval * scale)
 				local guard = 0
@@ -258,12 +223,11 @@ function DropperService.Init()
 					drop(plot)
 				end
 				if guard >= 4 then
-					state.Accum = 0   -- лаг-спайк: не выплёвываем очередь целиком
+					state.Accum = 0
 				end
 			end
 		end
 
-		-- 2) Утилизация «застрявших» брусков — раз в секунду, не каждый кадр
 		lifetimeAccum += dt
 		if lifetimeAccum < 1 then
 			return
@@ -278,7 +242,7 @@ function DropperService.Init()
 				if not product.Parent then
 					table.remove(list, i)
 				elseif born and (now - born) > Config.Product.Lifetime then
-					-- Хук Auto-Collect: MonetizationService может продать вместо утилизации
+
 					local handled = false
 					if DropperService.OnProductExpired then
 						local ok, result = pcall(DropperService.OnProductExpired, plot, product)
@@ -292,7 +256,6 @@ function DropperService.Init()
 		end
 	end)
 
-	-- Плот освободился — забираем все его продукты обратно в пул
 	PlotService.RegisterCleanup(function(_, plot)
 		DropperService.ClearPlot(plot)
 	end)

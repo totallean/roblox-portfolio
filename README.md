@@ -70,7 +70,7 @@ Mobile buttons are created automatically.
 ## ButterSquishTycoon — factory tycoon
 
 Butter sticks leave the extruder, get stamped and coated in up to five layers of wax, then sell at the
-collector. Source in `ButterSquishTycoon/src` (services on the server, controllers on the client).
+collector. Source in `ButterSquishTycoon/src`: 13 server services, 4 shared modules, 2 client controllers.
 
 - **Content-driven design.** `Shared/Config.lua` is the single source of content: stations, buttons, prices,
   palette and plot layout. Logic never names a specific station, so a new production step is one table entry.
@@ -80,7 +80,12 @@ collector. Source in `ButterSquishTycoon/src` (services on the server, controlle
   (`FTUEController`).
 - **Monetization:** game passes (x2 value, auto-collect, VIP aura, starter pack) and developer products,
   handled in `MonetizationService`.
+- **Network contract:** every remote is registered through `NetService` with an argument schema
+  (`Shared/Schema.lua`) and a per-remote rate limit; invalid calls are rejected before any handler runs.
+- **Social:** server-wide announcements for joins, rebirths and new stations, plus a leaderboard.
 - **Saving:** `UpdateAsync` with session locking, autosave and a `BindToClose` that waits for pending writes.
+
+The place file `ButterSquishTycoon.rbxl` opens directly in Studio; `default.project.json` maps `src/` for Rojo.
 
 ---
 

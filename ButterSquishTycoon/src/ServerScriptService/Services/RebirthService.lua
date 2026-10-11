@@ -1,19 +1,9 @@
---[[
-	RebirthService — порог, сброс, перманентный множитель.
-
-	Порог берётся из конфига: cost(n) = BaseCost * Growth^n.
-	Ребёрн сбрасывает баланс и ВСЕ купленные станции, но навсегда
-	добавляет +BonusPerRebirth к множителю дохода
-	(множитель считает CurrencyService, здесь только данные).
-
-	Станции с полем RequiredRebirths открываются именно отсюда:
-	ButtonService сам перестанет их прятать, когда data.Rebirths вырастет.
-]]
-
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 local DataService = require(script.Parent.DataService)
+local NetService = require(script.Parent.NetService)
 local PlotService = require(script.Parent.PlotService)
 local CurrencyService = require(script.Parent.CurrencyService)
 local ButtonService = require(script.Parent.ButtonService)
@@ -22,7 +12,10 @@ local DropperService = require(script.Parent.DropperService)
 
 local RebirthService = {}
 
-local lastRequest = {}   -- [player] = os.clock(), анти-спам
+RebirthService.OnRebirth = nil
+
+local lastRequest = {}
+local awaitingConfirm = {}
 local remotes
 
 function RebirthService.GetCost(player: Player): number
@@ -45,7 +38,6 @@ function RebirthService.CanRebirth(player: Player): (boolean, string?)
 	return true, nil
 end
 
--- free = true → ребёрн без списания (Dev Product «Skip Rebirth»)
 function RebirthService.DoRebirth(player: Player, free: boolean?): boolean
 	local data = DataService.Get(player)
 	local plot = PlotService.GetPlot(player)
@@ -53,7 +45,6 @@ function RebirthService.DoRebirth(player: Player, free: boolean?): boolean
 		return false
 	end
 
-	-- Анти-спам на все входы (Touched и Remote)
 	local now = os.clock()
 	if lastRequest[player] and now - lastRequest[player] < Config.Rebirth.Cooldown then
 		return false
@@ -70,17 +61,14 @@ function RebirthService.DoRebirth(player: Player, free: boolean?): boolean
 		return false
 	end
 
-	-- Сброс
 	data.Rebirths = (data.Rebirths or 0) + 1
 	data.Currency = 0
 	data.Stations = {}
 
-	-- Чистим плот: продукты, станции, дропперы
 	DropperService.ClearPlot(plot)
 	DropperService.DisableStation(plot)
 	ProcessService.DisableAll(plot)
 
-	-- И заново выдаём бесплатные станции + перерисовываем кнопки
 	ButtonService.RestorePlayer(player)
 	CurrencyService.Push(player)
 
@@ -90,26 +78,71 @@ function RebirthService.DoRebirth(player: Player, free: boolean?): boolean
 		Config.Palette.Grape
 	)
 
-	-- Ребёрн — важное событие, сохраняем сразу, не ждём автосейва
 	task.spawn(DataService.SaveAsync, player, false)
+
+	if RebirthService.OnRebirth then
+		RebirthService.OnRebirth(player, data.Rebirths)
+	end
 	return true
+end
+
+function RebirthService.RequestRebirth(player: Player)
+
+	if awaitingConfirm[player] then
+		return false
+	end
+
+	local ok, reason = RebirthService.CanRebirth(player)
+	if not ok then
+		remotes.Notify:FireClient(player, reason or Config.Text.RebirthBlocked, Config.Palette.HotRed)
+		return false
+	end
+
+	local data = DataService.Get(player)
+	local nextBonus = math.floor(((data.Rebirths or 0) + 1) * Config.Rebirth.BonusPerRebirth * 100)
+
+	awaitingConfirm[player] = true
+	local answer, err = NetService.InvokeClientAsync(player, "ConfirmAction", {
+		Kind  = "Rebirth",
+		Title = Config.Text.ConfirmTitle,
+		Body  = (Config.Text.ConfirmBody):format(nextBonus),
+		Yes   = Config.Text.ConfirmYes,
+		No    = Config.Text.ConfirmNo,
+	})
+	awaitingConfirm[player] = nil
+
+	if err or answer ~= true then
+
+		return false
+	end
+
+	if not player.Parent then
+		return false
+	end
+
+	local stillOk, stillReason = RebirthService.CanRebirth(player)
+	if not stillOk then
+		remotes.Notify:FireClient(player, stillReason or Config.Text.RebirthBlocked, Config.Palette.HotRed)
+		return false
+	end
+
+	return RebirthService.DoRebirth(player, false)
 end
 
 function RebirthService.Init()
 	remotes = ReplicatedStorage:WaitForChild("Remotes")
 
-	-- Вход №1: физическая кнопка на плоте
 	ButtonService.OnRebirthRequested = function(player)
-		RebirthService.DoRebirth(player, false)
+		task.spawn(RebirthService.RequestRebirth, player)
 	end
 
-	-- Вход №2: кнопка в UI. Sanity checks те же самые — клиенту не верим.
-	remotes.RequestRebirth.OnServerEvent:Connect(function(player)
-		local now = os.clock()
-		if lastRequest[player] and now - lastRequest[player] < Config.RemoteCooldown then
-			return
-		end
-		RebirthService.DoRebirth(player, false)
+	NetService.OnEvent("RequestRebirth", {}, function(player)
+		RebirthService.RequestRebirth(player)
+	end)
+
+	Players.PlayerRemoving:Connect(function(player)
+		lastRequest[player] = nil
+		awaitingConfirm[player] = nil
 	end)
 end
 

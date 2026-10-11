@@ -1,54 +1,36 @@
---[[
-	Config.lua — ЕДИНСТВЕННЫЙ источник настроек контента.
-	Принцип: логика не знает про конкретные станции, она читает эту таблицу.
-	Чтобы добавить новый слой воска — допиши ОДНУ запись в Config.Stations.
-	Путь: ReplicatedStorage/Shared/Config (ModuleScript)
-]]
-
 local Config = {}
 
--- ═══════════════════════════════════════════════════════════════
--- ПАЛИТРА (retro-slop / AI-slop). Меняется одним местом.
--- ═══════════════════════════════════════════════════════════════
 Config.Palette = {
-	Butter     = Color3.fromRGB(255, 214, 64),   -- ядовито-жёлтый «масляный»
+	Butter     = Color3.fromRGB(255, 214, 64),
 	ButterDeep = Color3.fromRGB(255, 156, 20),
-	ToxicPink  = Color3.fromRGB(255, 45, 160),   -- токсично-розовый
-	CyberCyan  = Color3.fromRGB(120, 255, 240),  -- кибер-циан
-	AcidGreen  = Color3.fromRGB(70, 255, 130),   -- «можно купить»
-	HotRed     = Color3.fromRGB(255, 60, 80),    -- «не хватает денег»
+	ToxicPink  = Color3.fromRGB(255, 45, 160),
+	CyberCyan  = Color3.fromRGB(120, 255, 240),
+	AcidGreen  = Color3.fromRGB(70, 255, 130),
+	HotRed     = Color3.fromRGB(255, 60, 80),
 	Grape      = Color3.fromRGB(120, 50, 220),
-	ButterBlue = Color3.fromRGB(24, 82, 214),    -- синяя надпись BUTTER, как на реальном бруске
-	SteelDark  = Color3.fromRGB(48, 54, 72),     -- фабричный пол, тёмная плитка
-	SteelLight = Color3.fromRGB(72, 80, 104),    -- фабричный пол, светлая плитка
+	ButterBlue = Color3.fromRGB(24, 82, 214),
+	SteelDark  = Color3.fromRGB(48, 54, 72),
+	SteelLight = Color3.fromRGB(72, 80, 104),
 	Concrete   = Color3.fromRGB(58, 60, 74),
-	HazardYell = Color3.fromRGB(255, 196, 0),    -- жёлто-чёрная разметка
+	HazardYell = Color3.fromRGB(255, 196, 0),
 	HazardDark = Color3.fromRGB(26, 26, 30),
 	Void       = Color3.fromRGB(16, 10, 30),
 	White      = Color3.fromRGB(255, 255, 255),
 	Black      = Color3.fromRGB(0, 0, 0),
 }
 
--- Общий стиль SurfaceGui/BillboardGui-подписей
--- Иконка робуксов для ценников магазина
 Config.RobuxIcon = "rbxassetid://84729279213852"
 
 Config.Style = {
-	Font          = Enum.Font.LuckiestGuy,   -- жирный гротеск-плейсхолдер
+	Font          = Enum.Font.LuckiestGuy,
 	StrokeColor   = Color3.fromRGB(0, 0, 0),
 
-	-- Обводка ТЕКСТА В ИНТЕРФЕЙСЕ выключена: у жирного гротеска она
-	-- съедала внутренние просветы букв, особенно в магазине
 	StrokeThickness = 0,
 
-	-- Надписи В МИРЕ (ценники, таблички) висят на фоне сцены,
-	-- им тонкий контур всё-таки нужен
 	WorldStroke   = 0.8,
 
-	-- Обводка РАМОК (Frame/Button) — это акцент, её оставляем
 	FrameStroke   = 3,
 
-	-- Обводка штампа на бруске масла
 	StampStroke   = 0.9,
 
 	TextColor     = Color3.fromRGB(255, 255, 255),
@@ -56,41 +38,22 @@ Config.Style = {
 
 Config.Debug = { Verbose = true }
 
--- ═══════════════════════════════════════════════════════════════
--- ВАЛЮТА
--- ═══════════════════════════════════════════════════════════════
 Config.Currency = {
 	Name  = "Butter",
-	-- Иконка ставится ТОЛЬКО в счётчике баланса и на кнопке ребёрна.
-	-- Во всех остальных надписях (ценники, цели, уведомления) её нет:
-	-- со смайликами жирный гротеск читается заметно хуже.
+
 	Icon  = "🧈",
 	Short = "B",
 }
 
--- ═══════════════════════════════════════════════════════════════
--- ПЛОТЫ
--- Плот строится клонированием ServerStorage.PlotTemplate.
--- Все офсеты станций считаются от ВЕРХНЕЙ ПЛОСКОСТИ базы плота (локально).
--- ═══════════════════════════════════════════════════════════════
 Config.Plot = {
-	Count       = 6,                          -- сколько плотов создать на сервере
+	Count       = 6,
 	Size        = Vector3.new(64, 2, 128),
-	Spacing     = 84,                         -- расстояние между плотами по X
-	Origin      = Vector3.new(0, 1, 0),       -- база лежит прямо на серой плите-земле
+	Spacing     = 84,
+	Origin      = Vector3.new(0, 1, 0),
 	BaseColor   = Color3.fromRGB(34, 36, 46),
 	BaseMaterial= Enum.Material.SmoothPlastic,
-	SignOffset  = Vector3.new(0, 12, -60),    -- табличка «свободно / ник игрока»
+	SignOffset  = Vector3.new(0, 12, -60),
 
-	-- Как игрок получает плот:
-	--   "Manual" — сам выбирает: встаёт на зелёную площадку у входа
-	--   "Auto"   — свободный плот выдаётся сразу при входе
-	-- Требование курса «плот сразу при входе» закрывается переключением
-	-- этой одной строки на "Auto", логика на обе ветки уже написана.
-	ClaimMode = "Manual",
-
-	-- Площадка «занять плот»: стоит в проёме забора, чтобы игрок
-	-- наступил на неё, просто зайдя внутрь
 	Claim = {
 		Offset      = Vector3.new(16, 0, -60),
 		Size        = Vector3.new(11, 0.7, 11),
@@ -99,113 +62,78 @@ Config.Plot = {
 		Material    = Enum.Material.Neon,
 		Label       = "CLAIM PLOT",
 		Cooldown    = 1,
-		HiddenDrop  = 24,   -- насколько уводим площадку вниз, когда плот занят
+		HiddenDrop  = 24,
 	},
 }
 
--- ═══════════════════════════════════════════════════════════════
--- ПОЛ ЦЕХА
--- Тот же приём, что в «садовых» тайкунах: сетка плиток с зазором даёт
--- «выдавленный» рисунок без единой текстуры. Здесь — стальная шахматка
--- плюс жёлто-чёрная разметка вдоль конвейерной линии.
--- ═══════════════════════════════════════════════════════════════
 Config.Floor = {
 	Enabled       = true,
 
-	-- Плитка с лего-шипами уехала на общую плиту-землю (Config.Ground):
-	-- на плотах она забивала линию и мешала читать конвейер.
-	-- Ставь true, если захочешь вернуть её на плоты.
 	TilesEnabled  = false,
 
-	TileSize      = 8,      -- сторона плитки
-	Gap           = 0.8,    -- зазор между плитками — он и рисует сетку
+	TileSize      = 8,
+	Gap           = 0.8,
 	Thickness     = 0.3,
-	ColorA        = Color3.fromRGB(126, 138, 168),   -- светлая плитка
-	ColorB        = Color3.fromRGB(78, 88, 116),     -- тёмная плитка
+	ColorA        = Color3.fromRGB(126, 138, 168),
+	ColorB        = Color3.fromRGB(78, 88, 116),
 	Material      = Enum.Material.DiamondPlate,
 	Reflectance   = 0.05,
 
 	StudEnabled   = true,
-	StudInset     = 2.2,    -- насколько шип меньше плитки (по каждой стороне)
-	StudHeight    = 0.35,   -- высота выступа
-	StudLighten   = 26,     -- на сколько шип светлее своей плитки (0..255)
+	StudInset     = 2.2,
+	StudHeight    = 0.35,
+	StudLighten   = 26,
 	StudMaterial  = Enum.Material.SmoothPlastic,
 
-	-- Жёлто-чёрная разметка вдоль линии остаётся всегда: она размечает
-	-- конвейер, а не украшает пол
 	HazardEnabled = true,
-	LaneHalfWidth = 8,      -- коридор линии: сюда плитку не кладём
-	HazardCenter  = 6.25,   -- ось жёлто-чёрной разметки по краям коридора
+	LaneHalfWidth = 8,
+	HazardCenter  = 6.25,
 	HazardWidth   = 3.5,
-	HazardSegment = 8,      -- длина одного жёлтого/чёрного куска
+	HazardSegment = 8,
 }
 
--- ═══════════════════════════════════════════════════════════════
--- ЗЕМЛЯ — большая серая лего-плита, на которой стоят все плоты
---
--- Ретро-слоп делает такой пол не сеткой из деталей, а ОДНОЙ деталью
--- со старой поверхностью TopSurface = Studs: движок сам рисует
--- классические лего-шипы. Стоит это ноль лишних деталей и выглядит
--- ровно как на бейсплейте из старых плейсов.
--- ═══════════════════════════════════════════════════════════════
 Config.Ground = {
 	Enabled     = true,
 	Name        = "Baseplate",
-	Color       = Color3.fromRGB(146, 148, 154),   -- классический серый
+	Color       = Color3.fromRGB(146, 148, 154),
 	Material    = Enum.Material.Plastic,
 	Reflectance = 0,
 	Thickness   = 16,
-	Overhang    = 90,        -- насколько плита шире забора завода
+	Overhang    = 90,
 	Surface     = Enum.SurfaceType.Studs,
-	KeepGridTexture = false, -- тёмная сетка поверх шипов только рябит
+	KeepGridTexture = false,
 }
 
--- ═══════════════════════════════════════════════════════════════
--- ОГРАЖДЕНИЕ ПЛОТА
--- Визуал — энергетические панели (Slot_Fence_*), их можно заменить
--- моделью из Toolbox. Столкновение держит отдельный невидимый
--- Barrier_*, поэтому замена визуала не уронит игрока с плота.
--- ═══════════════════════════════════════════════════════════════
 Config.Fence = {
 	Enabled      = true,
-	Height       = 6,     -- по пояс: ограждает, но не закрывает обзор на линию
+	Height       = 6,
 
-	-- Столбы
 	PostEvery    = 8,
 	PostWidth    = 1.4,
 	PostColor    = Color3.fromRGB(52, 58, 76),
 	PostMaterial = Enum.Material.Metal,
 
-	-- Поручни (доли от высоты)
 	RailHeights   = { 0.32, 0.68, 0.98 },
 	RailThickness = 0.5,
 	RailColor     = Color3.fromRGB(120, 255, 240),
 	RailMaterial  = Enum.Material.Neon,
 
-	-- Сетчатая панель между столбами: сквозь неё видно цех
 	MeshThickness    = 0.35,
 	MeshColor        = Color3.fromRGB(96, 108, 138),
 	MeshMaterial     = Enum.Material.Metal,
 	MeshTransparency = 0.72,
 
-	-- Проём для входа
 	GapWidth     = 18,
-	GapCenterX   = 16,   -- проём смещён вбок, чтобы вход не был на самой ленте
+	GapCenterX   = 16,
 
-	-- Невидимый коллайдер: он и держит игрока, а не декоративные столбы
 	BarrierExtra     = 10,
 	BarrierThickness = 1.2,
 }
 
--- ═══════════════════════════════════════════════════════════════
--- ФАБРИЧНЫЙ ДЕКОР
--- Тоже слоты: Model + Placeholder + PrimaryPart, меняются на Toolbox.
--- Логика их не трогает вообще — это чистая обстановка цеха.
--- ═══════════════════════════════════════════════════════════════
 Config.Decor = {
 	{
 		Id = "CreamTank_1", Label = "CREAM TANK",
-		Offset = Vector3.new(-24, 7, -42), Size = Vector3.new(14, 10, 10),  -- ось цилиндра = X
+		Offset = Vector3.new(-24, 7, -42), Size = Vector3.new(14, 10, 10),
 		Shape = Enum.PartType.Cylinder, Rotation = Vector3.new(0, 0, 90),
 		Color = Color3.fromRGB(196, 204, 220), Material = Enum.Material.Metal,
 		CanCollide = true,
@@ -221,8 +149,7 @@ Config.Decor = {
 		Id = "Pipe_Over_1", Label = "",
 		Offset = Vector3.new(0, 17, -36), Size = Vector3.new(56, 2.2, 2.2),
 		Shape = Enum.PartType.Cylinder, Rotation = Vector3.new(0, 0, 0),
-		-- Спуски до пола. Форму, диаметр, цвет и материал берут у самой
-		-- трубы, поэтому вниз уходит такая же труба, а не колонна.
+
 		Legs = { Inset = 4 },
 		Color = Color3.fromRGB(255, 156, 20), Material = Enum.Material.Metal,
 		CanCollide = false,
@@ -231,21 +158,19 @@ Config.Decor = {
 		Id = "Pipe_Over_2", Label = "",
 		Offset = Vector3.new(0, 17, 12), Size = Vector3.new(56, 2.2, 2.2),
 		Shape = Enum.PartType.Cylinder, Rotation = Vector3.new(0, 0, 0),
-		-- Спуски до пола. Форму, диаметр, цвет и материал берут у самой
-		-- трубы, поэтому вниз уходит такая же труба, а не колонна.
+
 		Legs = { Inset = 4 },
 		Color = Color3.fromRGB(120, 255, 240), Material = Enum.Material.Metal,
 		CanCollide = false,
 	},
 	{
-		-- Бочка вместо бывшего «пульта»: тот выглядел как интерактивный
-		-- объект, хотя функционала за ним не было
+
 		Id = "Barrel", Label = "",
 		Offset = Vector3.new(24, 3.5, 46), Size = Vector3.new(7, 5.5, 5.5),
 		Shape = Enum.PartType.Cylinder, Rotation = Vector3.new(0, 0, 90),
 		Color = Color3.fromRGB(150, 96, 48), Material = Enum.Material.WoodPlanks,
 		CanCollide = true,
-		-- Обручи: два тёмных кольца чуть шире корпуса
+
 		Bands = { Heights = { 0.28, 0.72 }, Thickness = 0.7, Overhang = 0.5,
 			Color = Color3.fromRGB(58, 64, 84) },
 	},
@@ -257,156 +182,112 @@ Config.Decor = {
 	},
 }
 
--- ═══════════════════════════════════════════════════════════════
--- ГРАНИЦЫ КАРТЫ — чтобы игрок физически не мог улететь за пределы
--- ═══════════════════════════════════════════════════════════════
 Config.WorldBounds = {
 	Enabled          = true,
-	Padding          = 44,    -- запас от крайних плотов
-	ExtraFront       = 60,    -- со стороны спавна карта шире
-	BarrierHeight    = 120,   -- невидимая стена: перелететь нельзя
+	Padding          = 44,
+	ExtraFront       = 60,
+	BarrierHeight    = 120,
 	BarrierThickness = 4,
-	GroundY          = 0,     -- уровень земли, от него растут стены
+	GroundY          = 0,
 
-	-- Стены цеха по периметру. Не забор, а полноценная стена с деталями:
-	-- цоколь, разметочная полоса, колонны, ленточное остекление,
-	-- карниз и техническая труба под потолком.
 	Wall = {
 		Height        = 50,
 		Thickness     = 3,
 		PanelColor    = Color3.fromRGB(104, 112, 136),
 		PanelMaterial = Enum.Material.Metal,
 
-		-- Цоколь + жёлтая разметочная полоса над ним
 		PlinthHeight  = 7,
 		PlinthColor   = Color3.fromRGB(48, 54, 72),
 		StripeHeight  = 1.5,
 		StripeColor   = Color3.fromRGB(255, 196, 0),
 
-		-- Карниз сверху
 		CapHeight     = 3,
 		CapColor      = Color3.fromRGB(40, 44, 58),
 
-		-- Колонны внутрь цеха
 		PillarEvery    = 26,
 		PillarWidth    = 4,
 		PillarDepth    = 5,
 		PillarColor    = Color3.fromRGB(56, 62, 82),
 		PillarMaterial = Enum.Material.Metal,
 
-		-- Ленточное остекление между колоннами
 		WindowEnabled      = true,
 		WindowHeight       = 12,
-		WindowFraction     = 0.62,   -- доля высоты стены
-		WindowInset        = 3,      -- отступ от колонн
+		WindowFraction     = 0.62,
+		WindowInset        = 3,
 		WindowColor        = Color3.fromRGB(150, 235, 255),
 		WindowMaterial     = Enum.Material.Neon,
 		WindowTransparency = 0.45,
 
-		-- Техническая труба вдоль стены
 		PipeEnabled  = true,
 		PipeRadius   = 2.4,
 		PipeFraction = 0.86,
-		PipeOffset   = 4,        -- насколько отнесена от стены внутрь
+		PipeOffset   = 4,
 		PipeColor    = Color3.fromRGB(255, 156, 20),
 		PipeMaterial = Enum.Material.Metal,
 
-		-- Вывеска переехала на отдельный щит по центру цеха
-		-- (Config.FactorySign): на стене её перекрывали колонны
 		SignText  = nil,
 	},
 }
 
--- ═══════════════════════════════════════════════════════════════
--- ЩИТ С НАЗВАНИЕМ ЗАВОДА
--- Отдельная конструкция на столбах в проходе перед плотами.
--- На стене надпись перекрывали колонны, здесь её ничто не закрывает,
--- и читается она с обеих сторон.
--- ═══════════════════════════════════════════════════════════════
 Config.FactorySign = {
 	Enabled     = true,
 	Text        = "BUTTER SQUISH FACTORY",
-	Z           = -78,                          -- проход между спавном и плотами
+	Z           = -78,
 	BoardSize   = Vector3.new(78, 11, 2),
-	BoardHeight = 22,                           -- высота центра щита
+	BoardHeight = 22,
 	BoardColor  = Color3.fromRGB(28, 32, 44),
 	BoardMaterial = Enum.Material.SmoothPlastic,
-	FrameColor  = Color3.fromRGB(255, 196, 0),  -- жёлтая рамка по краю щита
+	FrameColor  = Color3.fromRGB(255, 196, 0),
 	FrameDepth  = 1.6,
 	PostWidth   = 3.5,
-	PostSpacing = 56,                           -- расстояние между столбами
+	PostSpacing = 56,
 	PostColor   = Color3.fromRGB(52, 58, 76),
 	PostMaterial = Enum.Material.Metal,
 	TextColor   = Color3.fromRGB(255, 214, 64),
 }
 
--- ═══════════════════════════════════════════════════════════════
--- КОНВЕЙЕР
--- Лента = N сегментов вдоль локальной оси +Z. Скорость задаётся
--- через AssemblyLinearVelocity, направление берётся из ориентации детали.
--- ═══════════════════════════════════════════════════════════════
 Config.Conveyor = {
 	Speed        = 16,
 	SegmentCount = 12,
 	SegmentSize  = Vector3.new(9, 1, 10),
-	StartZ       = -52,                       -- центр первого сегмента
+	StartZ       = -52,
 	Color        = Color3.fromRGB(28, 18, 48),
 	Material     = Enum.Material.SmoothPlastic,
-	RailHeight   = 2.5,                       -- невидимые бортики, чтобы брусок не падал
+	RailHeight   = 2.5,
 }
 
--- ═══════════════════════════════════════════════════════════════
--- ПРОДУКТ (брусок масла)
--- ═══════════════════════════════════════════════════════════════
 Config.Product = {
 	BaseSize     = Vector3.new(2, 1, 3),
-	MaxActive    = 30,      -- жёсткий лимит активных продуктов на плот
-	PoolSize     = 120,     -- предсоздаваемый пул на весь сервер
-	PoolHardCap  = 400,     -- предохранитель: больше этого не создаём никогда
-	Lifetime     = 45,      -- сек, после которых «застрявший» брусок утилизируется
-	SquishTime   = 0.12,    -- длительность твина «сдавливания» на станции
-	DropHeight   = 5,       -- на сколько studs выше ленты появляется брусок
+	MaxActive    = 30,
+	PoolSize     = 120,
+	PoolHardCap  = 400,
+	Lifetime     = 45,
+	SquishTime   = 0.12,
+	DropHeight   = 5,
 }
 
--- ═══════════════════════════════════════════════════════════════
--- СТАНЦИИ / ТРИГГЕРЫ / КНОПКИ
--- ═══════════════════════════════════════════════════════════════
 Config.Station = {
-	TriggerSize   = Vector3.new(11, 9, 3),   -- невидимый Part поперёк ленты
-	TouchCooldown = 0.25,                    -- анти-дюп на Touched
-	SlotY         = 4,                       -- высота центра слота модели
+	TriggerSize   = Vector3.new(11, 9, 3),
+	TouchCooldown = 0.25,
+	SlotY         = 4,
 }
 
 Config.Buttons = {
 	PadSize        = Vector3.new(6, 0.6, 6),
 	TriggerSize    = Vector3.new(6, 6, 6),
-	TouchCooldown  = 0.6,                    -- анти-дюп на покупке
-	BounceStuds    = 1.5,                    -- подпрыгивание при появлении
+	TouchCooldown  = 0.6,
+	BounceStuds    = 1.5,
 	BounceTime     = 0.35,
-	HiddenY        = -6,                     -- куда прячется невидимая кнопка
+	HiddenY        = -6,
 }
 
--- ═══════════════════════════════════════════════════════════════
--- ЛИНИЯ ПРОИЗВОДСТВА (главная декларация)
---
---   Type = "Producer"  — единственный, кто создаёт продукт.
---   Type = "Processor" — ловит проезжающий брусок и апгрейдит его.
---   Type = "Collector" — принимает брусок и начисляет валюту.
---
---   RequiredStage    — обрабатываем только продукт с таким Stage.
---                      Не совпало — брусок проезжает мимо без изменений.
---   Requires         — Id предыдущей станции в цепочке появления кнопок.
---   RequiredRebirths — кнопка появится только после N ребёрнов.
---
---   Кривая цен экспоненциальная (~x4), но первые 3–4 покупки
---   укладываются примерно в 6–8 минут.
--- ═══════════════════════════════════════════════════════════════
 Config.Stations = {
 	{
 		Id            = "Extruder",
 		Label         = "BUTTER EXTRUDER",
+		Sfx           = "Extruder",
 		Type          = "Producer",
-		Price         = 0,                       -- выдаётся сразу при входе
+		Price         = 0,
 		DropInterval  = 2.0,
 		BaseValue     = 15,
 		ProductSize   = Vector3.new(2, 1, 3),
@@ -415,18 +296,19 @@ Config.Stations = {
 		Offset        = Vector3.new(-11, 4, -54),
 		ButtonOffset  = Vector3.new(11, 0, -54),
 		SlotSize      = Vector3.new(10, 10, 10),
-		FacingDirection = Vector3.new(1, 0, 0),  -- «лицом» к ленте
+		FacingDirection = Vector3.new(1, 0, 0),
 		SlotColor     = Config.Palette.ButterDeep,
 	},
 	{
 		Id            = "Stamp",
 		Label         = "STAMP PRESS",
+		Sfx           = "Stamp",
 		Type          = "Processor",
 		RequiredStage = 0,
 		Requires      = "Extruder",
 		Price         = 100,
 		Multiplier    = 2,
-		-- Синяя надпись с белой обводкой — ровно как на упаковке масла
+
 		Decal         = { Text = "BUTTER", Color = Config.Palette.ButterBlue, StrokeColor = Config.Palette.White },
 		Offset        = Vector3.new(-11, 4, -38),
 		ButtonOffset  = Vector3.new(11, 0, -38),
@@ -437,6 +319,7 @@ Config.Stations = {
 	{
 		Id            = "Wax_1",
 		Label         = "WAX COAT 1",
+		Sfx           = "Wax",
 		Type          = "Processor",
 		RequiredStage = 1,
 		Requires      = "Stamp",
@@ -452,18 +335,15 @@ Config.Stations = {
 		SlotColor     = Config.Palette.CyberCyan,
 	},
 	{
-		-- Кнопка ускорения. PlaceModel = false — модель на плот НЕ ставится.
-		-- ButtonOffset совпадает с предыдущей станцией: купил слой воска —
-		-- на ТОЙ ЖЕ кнопке появляется ускорение. Так между машинами
-		-- не остаётся пустых мест, шаг линии везде ровно 16 studs.
+
 		Id            = "Belt_1",
 		Label         = "BELT BOOST 1",
 		Type          = "Speed",
 		Requires      = "Wax_1",
 		Price         = 1000,
 		PlaceModel    = false,
-		DropIntervalMultiplier  = 0.7,   -- дроппер роняет на 30% чаще
-		ConveyorSpeedMultiplier = 1.35,  -- масло едет заметно быстрее
+		DropIntervalMultiplier  = 0.7,
+		ConveyorSpeedMultiplier = 1.35,
 		ButtonOffset  = Vector3.new(11, 0, -22),
 		Offset        = Vector3.new(-11, 4, -22),
 		SlotSize      = Vector3.new(10, 10, 8),
@@ -473,6 +353,7 @@ Config.Stations = {
 	{
 		Id            = "Wax_2",
 		Label         = "WAX COAT 2",
+		Sfx           = "Wax",
 		Type          = "Processor",
 		RequiredStage = 2,
 		Requires      = "Belt_1",
@@ -488,18 +369,15 @@ Config.Stations = {
 		SlotColor     = Config.Palette.AcidGreen,
 	},
 	{
-		-- Кнопка ускорения. PlaceModel = false — модель на плот НЕ ставится.
-		-- ButtonOffset совпадает с предыдущей станцией: купил слой воска —
-		-- на ТОЙ ЖЕ кнопке появляется ускорение. Так между машинами
-		-- не остаётся пустых мест, шаг линии везде ровно 16 studs.
+
 		Id            = "Belt_2",
 		Label         = "BELT BOOST 2",
 		Type          = "Speed",
 		Requires      = "Wax_2",
 		Price         = 10000,
 		PlaceModel    = false,
-		DropIntervalMultiplier  = 0.7,   -- дроппер роняет на 30% чаще
-		ConveyorSpeedMultiplier = 1.35,  -- масло едет заметно быстрее
+		DropIntervalMultiplier  = 0.7,
+		ConveyorSpeedMultiplier = 1.35,
 		ButtonOffset  = Vector3.new(11, 0, -6),
 		Offset        = Vector3.new(-11, 4, -6),
 		SlotSize      = Vector3.new(10, 10, 8),
@@ -509,6 +387,7 @@ Config.Stations = {
 	{
 		Id            = "Wax_3",
 		Label         = "WAX COAT 3",
+		Sfx           = "Wax",
 		Type          = "Processor",
 		RequiredStage = 3,
 		Requires      = "Belt_2",
@@ -526,6 +405,7 @@ Config.Stations = {
 	{
 		Id            = "Wax_4",
 		Label         = "WAX COAT 4",
+		Sfx           = "Wax",
 		Type          = "Processor",
 		RequiredStage = 4,
 		Requires      = "Wax_3",
@@ -544,6 +424,7 @@ Config.Stations = {
 	{
 		Id            = "Wax_5",
 		Label         = "WAX COAT 5",
+		Sfx           = "Wax",
 		Type          = "Processor",
 		RequiredStage = 5,
 		Requires      = "Wax_4",
@@ -561,7 +442,6 @@ Config.Stations = {
 	},
 }
 
--- Коллектор описывается отдельно: он всегда есть и ничего не стоит.
 Config.Collector = {
 	Id       = "Collector",
 	Label    = "SELL",
@@ -574,15 +454,12 @@ Config.Collector = {
 	TouchCooldown = 0.2,
 }
 
--- ═══════════════════════════════════════════════════════════════
--- РЕБЁРН
--- ═══════════════════════════════════════════════════════════════
 Config.Rebirth = {
-	BaseCost          = 60000,    -- порог первого ребёрна
-	Growth            = 3,        -- cost(n) = BaseCost * Growth^n
-	BonusPerRebirth   = 0.5,      -- +50% к доходу за каждый ребёрн
+	BaseCost          = 60000,
+	Growth            = 3,
+	BonusPerRebirth   = 0.5,
 	Max               = 25,
-	Cooldown          = 3,        -- анти-спам на Remote/Touched
+	Cooldown          = 3,
 	ButtonOffset      = Vector3.new(11, 0, 58),
 	Label             = "🔁 REBIRTH 🔁",
 	Color             = Config.Palette.Grape,
@@ -592,17 +469,6 @@ function Config.RebirthCost(rebirths: number): number
 	return math.floor(Config.Rebirth.BaseCost * (Config.Rebirth.Growth ^ math.max(0, rebirths)))
 end
 
--- ═══════════════════════════════════════════════════════════════
--- ДОСТИЖЕНИЯ
--- Условие задаётся ОДНИМ полем, логика читает их по очереди:
---   Claimed     — занять плот
---   Station     — купить станцию с таким Id
---   Rebirths    — набрать N ребёрнов
---   TotalEarned — заработать N всего за сессии
---   Collection  — открыть все остальные достижения
--- Награда: Cash (разовая выплата) или Multiplier (перманентный бонус).
--- Добавить достижение = дописать строку сюда.
--- ═══════════════════════════════════════════════════════════════
 Config.Achievements = {
 	List = {
 		{ Id = "OwnPlot",    Name = "OWN FACTORY",     Desc = "Claim a plot",              Claimed = true,        Reward = { Cash = 60 } },
@@ -615,29 +481,20 @@ Config.Achievements = {
 		{ Id = "GotWax3",    Name = "GLOSSY",          Desc = "Buy WAX COAT 3",            Station = "Wax_3",     Reward = { Cash = 60000 } },
 		{ Id = "Rebirth1",   Name = "RESTART",         Desc = "Do your first rebirth",     Rebirths = 1,          Reward = { Cash = 80000 } },
 		{ Id = "Millionar",  Name = "MILLIONAIRE",     Desc = "Earn 1 000 000 in total",   TotalEarned = 1000000, Reward = { Cash = 150000 } },
-		-- Достижения за покупки.
-		--   Hidden   — не показываются в списке, пока не выполнены.
-		--              F2P-игрок видит только бесплатные и может закрыть 100%.
-		--   Premium  — открытые подсвечиваются золотом, а не зелёным.
-		--   ExcludeFromCollection — не блокируют «полную коллекцию».
+
 		{ Id = "GotVip",    Name = "VIP",       Desc = "Own the VIP AURA pass", Pass = "VipAura", Hidden = true, Premium = true, ExcludeFromCollection = true, Reward = { Cash = 250000 } },
 		{ Id = "Supporter", Name = "SUPPORTER", Desc = "Own any game pass",     AnyPass = true,   Hidden = true, Premium = true, ExcludeFromCollection = true, Reward = { Cash = 50000 } },
 
 		{ Id = "Collection", Name = "FULL COLLECTION", Desc = "Unlock every free reward",  Collection = true,     Reward = { Multiplier = 0.5 } },
 	},
 
-	-- Как часто сервер пересматривает условия по накопленным числам
 	SweepInterval = 5,
 }
 
--- ═══════════════════════════════════════════════════════════════
--- МОНЕТИЗАЦИЯ (заглушки — проставь реальные Id вместо 0)
--- Лестница из трёх уровней: entry → core → premium.
--- ═══════════════════════════════════════════════════════════════
 Config.Monetization = {
 	GamePasses = {
 		DoubleButter = {
-			Id = 1948228545,                       -- GamePassId
+			Id = 1948228545,
 			Name = "x2 BUTTER VALUE",
 			Desc = "Permanent",
 			Price = 99,
@@ -646,22 +503,20 @@ Config.Monetization = {
 			Multiplier = 2,
 		},
 		StarterPack = {
-			Id = 1951090392,                       -- GamePassId
+			Id = 1951090392,
 			Name = "STARTER PACK",
 			Desc = "Best deal for a new factory",
 			Icon = "rbxassetid://117082672632962",
 
-			Price    = 149,   -- цена в робуксах, показывается крупно
-			OldPrice = 447,   -- перечёркнутая старая цена: витрина скидки
+			Price    = 149,
+			OldPrice = 447,
 			StoreDesc = "The best way to start: x2 butter value forever, 5 000 butter right away, and auto-collect so nothing is ever wasted. Three perks for less than the price of one.",
-			Featured = true,  -- рисуется большим ярким блоком наверху магазина
+			Featured = true,
 
-			-- Что даёт набор
 			Multiplier        = 2,
 			GrantCash         = 5000,
 			GrantsAutoCollect = true,
 
-			-- Плитки бонусов в витрине: иконка + короткая подпись
 			Perks = {
 				{ Icon = "rbxassetid://102226574302074", Label = "x2 VALUE" },
 				{ Icon = "rbxassetid://93035481294343",  Label = "5 000 BUTTER" },
@@ -669,7 +524,7 @@ Config.Monetization = {
 			},
 		},
 		AutoCollect = {
-			Id = 1951521060,                       -- GamePassId
+			Id = 1951521060,
 			Name = "AUTO-COLLECT",
 			Desc = "No lost sticks",
 			Price = 149,
@@ -677,18 +532,15 @@ Config.Monetization = {
 			StoreDesc = "Butter sticks that get stuck on the line sell themselves instead of being thrown away. Nothing is ever lost again.",
 		},
 
-		-- Косметика: подсветка персонажа, аура из искр и бонус к доходу.
-		-- Эффект вешается при каждом появлении персонажа, см.
-		-- MonetizationService.ApplyCosmetics.
 		VipAura = {
-			Id = 1947712491,                       -- GamePassId
+			Id = 1947712491,
 			Name = "VIP AURA",
 			Desc = "Glow + aura + bonus",
 			Price = 499,
 			Icon = "rbxassetid://108087274957555",
 			StoreDesc = "Stand out on the factory floor: a golden glow around your character, a trail of sparkles that follows you everywhere, and a permanent +25% to all butter income.",
 
-			Multiplier = 1.25,   -- те самые «ништяки» сверху косметики
+			Multiplier = 1.25,
 
 			Cosmetic = {
 				Highlight = {
@@ -713,7 +565,7 @@ Config.Monetization = {
 
 	Products = {
 		Boost2x10 = {
-			Id = 3709035375,                       -- DeveloperProductId
+			Id = 3709035375,
 			Tier = "entry",
 			Name = "x2 INCOME FOR 10 MIN",
 			Desc = "10 minutes",
@@ -723,17 +575,17 @@ Config.Monetization = {
 			Boost = { Multiplier = 2, Duration = 600 },
 		},
 		InstantCash = {
-			Id = 3709035458,                       -- DeveloperProductId
+			Id = 3709035458,
 			Tier = "core",
 			Name = "BUTTER BUNDLE",
 			Desc = "Instant payout",
 			Icon = "rbxassetid://93035481294343",
 			Price = 99,
 			StoreDesc = "An instant bag of butter scaled to your current income: six minutes of production paid out at once, never less than 2 500.",
-			Cash = { MinAmount = 2500, IncomeMinutes = 6 },  -- max(Min, доход_в_минуту * N)
+			Cash = { MinAmount = 2500, IncomeMinutes = 6 },
 		},
 		SkipRebirth = {
-			Id = 3709035512,                       -- DeveloperProductId
+			Id = 3709035512,
 			Tier = "premium",
 			Name = "SKIP REBIRTH",
 			Desc = "No grinding",
@@ -744,19 +596,14 @@ Config.Monetization = {
 		},
 	},
 
-	-- Порядок показа в UI-лесенке
 	Ladder = { "Boost2x10", "InstantCash", "SkipRebirth" },
 
-	-- Стартовый набор. Всплывает КАЖДЫЙ раз, когда игрок заходит в игру,
-	-- но только если он ещё не куплен. Это не автоматический платёжный
-	-- диалог Roblox, а обычное окно с кнопкой: диалог открывается уже
-	-- по нажатию игрока.
 	StarterOffer = {
 		Enabled     = true,
-		Kind        = "pass",        -- "pass" | "product"
+		Kind        = "pass",
 		Key         = "StarterPack",
-		DelayOnJoin = 4,             -- сек после входа, чтобы не бить в лицо на загрузке
-		Duration    = 600,           -- сколько висит окно с таймером
+		DelayOnJoin = 4,
+		Duration    = 600,
 		Title       = "STARTER PACK",
 		Perks = {
 			"x2 butter value",
@@ -766,69 +613,92 @@ Config.Monetization = {
 	},
 }
 
--- ═══════════════════════════════════════════════════════════════
--- FTUE — три шага, ведущие нового игрока
--- ═══════════════════════════════════════════════════════════════
 Config.FTUE = {
-	-- Каждый шаг: крупный текст по центру, курсор-рука на цели и
-	-- затемнение фона на «шагах действия». На шаге ожидания экран
-	-- не затемняется — там просто подсказка, как в референсе.
+
 	Steps = {
 		[1] = { Text = "Claim your factory!",            Target = "Claim",        Dim = true },
 		[2] = { Text = "Wait for the butter to reach the sell zone…", Target = "Collector", Dim = false },
 		[3] = { Text = "Buy your first station!",        Target = "NextButton",   Dim = true },
 		[4] = { Text = "Check REWARDS for bonuses",      Target = "Achievements", Dim = true },
 	},
-	Done = 5,   -- номер, при котором обучение считается пройденным
+	Done = 5,
 
-	-- Курсор-рука. Символ проверен: этот шрифт его рисует,
-	-- в отличие от стрелок с селектором эмодзи (U+FE0F).
 	Cursor = {
 		Glyph      = "\u{1F447}",
 		Color      = Color3.fromRGB(255, 214, 64),
 		Size       = 120,
-		Bob        = 14,      -- амплитуда покачивания в пикселях
+		Bob        = 14,
 		Speed      = 4,
-		RingPad    = 14,      -- насколько рамка-подсветка больше цели
+		RingPad    = 14,
 		RingColor  = Color3.fromRGB(255, 214, 64),
 	},
 
-	-- Затемнение фона
 	Overlay = {
 		Color        = Color3.fromRGB(0, 0, 0),
 		Transparency = 0.5,
 		FadeTime     = 0.25,
 	},
 
-	-- Крупный текст-инструкция
 	Banner = {
 		PositionScale = 0.24,
 		Height        = 78,
 		Color         = Color3.fromRGB(255, 255, 255),
 	},
 
-	-- Постоянная стрелка над текущей целью: живёт всю игру, а не
-	-- только во время шагов обучения.
-	-- Постоянная стрелка над очередной покупкой. Выключена: над каждой
-	-- появляющейся кнопкой висел ярлык GOAL, а на самой кнопке и так
-	-- написано название и цена. Включается одной строкой.
 	GoalArrow = {
 		Enabled   = false,
-		Clearance = 11,   -- запас над верхом цели, чтобы не перекрыть ценник
+		Clearance = 11,
 		Bob       = 0.8,
 		Speed     = 2.2,
 		Color     = Color3.fromRGB(70, 255, 130),
 	},
 }
 
--- ═══════════════════════════════════════════════════════════════
--- ТЕКСТЫ ИНТЕРФЕЙСА
--- Все формулировки, которые раньше были разбросаны по коду, лежат
--- здесь. Сменить язык всей игры = поправить эту таблицу плюс поля
--- Label/Name/Desc выше. В самом коде строк с текстом больше нет.
--- ═══════════════════════════════════════════════════════════════
+Config.Sound = {
+	Enabled      = true,
+	MasterVolume = 0.6,
+	Voices       = 3,
+
+	Effects = {
+
+		Click       = { Id = "rbxassetid://88442833509532",  Volume = 0.5,  MinInterval = 0.04 },
+
+		Sell        = { Id = "rbxassetid://131886985",       Volume = 0.45, MinInterval = 0.13, Pitch = { 0.93, 1.09 } },
+
+		Purchase    = { Id = "rbxassetid://128062463831151", Volume = 0.65, MinInterval = 0.25 },
+		Achievement = { Id = "rbxassetid://86070307558627",  Volume = 0.75, MinInterval = 0.25 },
+		Rebirth     = { Id = "rbxassetid://140231021022259", Volume = 0.85, MinInterval = 0.5 },
+
+		Denied      = { Id = "rbxassetid://100489811839284", Volume = 0.4,  MinInterval = 0.4 },
+
+		Notify      = { Id = "rbxassetid://129485210015224", Volume = 0.35, MinInterval = 0.35 },
+		Offer       = { Id = "rbxassetid://90681320250848",  Volume = 0.6,  MinInterval = 0.5 },
+	},
+
+	Stations = {
+		Extruder = { Id = "rbxassetid://9119054571", Volume = 0.6, MaxDistance = 55, MinDistance = 8, MinInterval = 0.12, Pitch = { 0.92, 1.08 } },
+		Stamp    = { Id = "rbxassetid://9116768449", Volume = 0.4, MaxDistance = 55, MinDistance = 8, MinInterval = 0.12, Pitch = { 0.90, 1.06 } },
+		Wax      = { Id = "rbxassetid://9119526981", Volume = 0.5, MaxDistance = 50, MinDistance = 8, MinInterval = 0.12, Pitch = { 0.95, 1.12 } },
+	},
+}
+
+Config.Music = {
+	Enabled = true,
+	Volume  = 0.18,
+	Shuffle = true,
+	Gap     = 3,
+
+	Tracks = {
+		{ Id = "rbxassetid://96948132613384",  Name = "Starry Night" },
+		{ Id = "rbxassetid://125866603219817", Name = "Save Room" },
+		{ Id = "rbxassetid://79573084280497",  Name = "Chakra Balancing 432Hz" },
+		{ Id = "rbxassetid://99678007903413",  Name = "Somewhere Beyond" },
+		{ Id = "rbxassetid://140386536872153", Name = "The Fledgelings Take Wing" },
+	},
+}
+
 Config.Text = {
-	-- Кнопки и панели
+
 	ShopButton      = "SHOP",
 	ShopTitle       = "SHOP",
 	ShopBadge       = "ONE TIME OFFER!",
@@ -840,7 +710,6 @@ Config.Text = {
 	RebirthButton   = "🔁 REBIRTH",
 	RebirthButtonFull = "🔁 REBIRTH #%d\n<font size=\"14\">%s %s</font>",
 
-	-- Верхняя плашка
 	IncomeShort     = "Income x%.2f",
 	IncomeFull      = "Income x%.2f · %s/min",
 	GoalLoading     = "Loading goal…",
@@ -849,7 +718,6 @@ Config.Text = {
 	GoalAffordable  = "%s — you can buy it!",
 	GoalAllBought   = "All bought! Rebirth in %s %s",
 
-	-- Всплывашки
 	Purchased       = "PURCHASED!\n%s",
 	GainPopup       = "+%s %s",
 	RewardCash      = "Reward: %s",
@@ -857,16 +725,13 @@ Config.Text = {
 	CollectionBonus = "Collection bonus: +%d%% income",
 	CollectionHint  = "Collect them all for an income bonus",
 
-	-- Указатели обучения
 	GoalArrow       = "GOAL",
 	StepCounter     = "Step %d/%d",
 
-	-- Уведомления сервера
 	NotOwnPlot      = "That's not your plot",
 	NeedMore        = "Need %s more",
 	FreePrice       = "FREE",
 	PlotVacant      = "VACANT",
-	NoFreePlots     = "No free plots",
 	PickPlot        = "Pick a plot: step on the green pad",
 	PlotClaimed     = "Plot claimed. Line is running",
 	DataLoading     = "Data is still loading",
@@ -878,45 +743,79 @@ Config.Text = {
 	MissingProductId = "TODO: set ProductId in Config",
 	MissingPassId   = "TODO: set GamePassId in Config",
 	KickNoData      = "Couldn't load your progress. Rejoin in a minute",
+
+	NetBusy         = "Slow down!",
+	NetError        = "Something went wrong",
+	NetNoProfile    = "Data is still loading",
+
+	BuyButton       = "BUY",
+	BuyUnknown      = "Unknown station",
+	BuyLocked       = "Not available yet",
+	BuyOwned        = "Already owned",
+	BuyNoPlot       = "Claim a plot first",
+
+	ConfirmTitle    = "REBIRTH?",
+	ConfirmBody     = "You lose every station and all butter.\nYou keep <b>+%d%%</b> income — forever.",
+	ConfirmYes      = "DO IT",
+	ConfirmNo       = "NOT YET",
+
+	InventoryButton = "FACTORY",
+	InventoryTitle  = "MY FACTORY",
+	InvLine         = "LINE %d/%d",
+	InvPasses       = "PERKS",
+	InvStats        = "STATS",
+	InvLoading      = "Asking the server…",
+	StatEarned      = "Total earned",
+	StatSold        = "Sticks sold",
+	StatRebirths    = "Rebirths",
+	StatIncome      = "Income / min",
+	StatPlaytime    = "Playtime",
+	StatBoost       = "Boost left",
+	StatMultiplier  = "Income multiplier",
+	PassOwned       = "OWNED",
+	PassLocked      = "LOCKED",
+
+	LeaderButton    = "TOP",
+	LeaderTitle     = "TOP FACTORIES",
+	LeaderEmpty     = "Nobody here yet",
+	LeaderYou       = "you",
+
+	FeedJoined      = "%s joined the factory",
+	FeedLeft        = "%s left",
+	FeedRebirth     = "%s hit REBIRTH #%d",
+	FeedStation     = "%s unlocked %s",
+	FeedRich        = "%s earned %s butter in total",
 }
 
--- ═══════════════════════════════════════════════════════════════
--- ДАННЫЕ
--- ═══════════════════════════════════════════════════════════════
 Config.Data = {
 	StoreName        = "ButterSquish_Player_v1",
 	KeyPrefix        = "P_",
-	AutosaveInterval = 60,     -- автосейв раз в 60 секунд
-	SessionLockTTL   = 900,    -- через сколько чужой лок считается протухшим
-	LockWaitTimeout  = 12,     -- сколько ждём чужую сессию, потом перехватываем лок
+	AutosaveInterval = 60,
+	SessionLockTTL   = 900,
+	LockWaitTimeout  = 12,
 	MaxRetries       = 5,
-	RetryBaseDelay   = 0.5,    -- экспоненциальная задержка: 0.5, 1, 2, 4, 8
+	RetryBaseDelay   = 0.5,
 	BindToCloseWait  = 25,
 }
 
--- Схема профиля. Меняешь ProfileStore — меняешь только DataService,
--- структура данных остаётся ровно этой.
 function Config.DefaultProfile(): { [string]: any }
 	return {
 		Version     = 1,
 		Currency    = 0,
-		Stations    = {},   -- [StationId] = true
+		Stations    = {},
 		Rebirths    = 0,
 		TotalEarned = 0,
-		SoldCount   = 0,    -- сколько брусков реально продано
-		Tutorial    = 0,    -- пройденный шаг FTUE
-		Achievements = {},  -- [AchievementId] = true
-		BonusMultiplier = 0,-- перманентный бонус за коллекцию достижений
-		HasClaimed  = false,-- игрок хоть раз занимал плот
-		Receipts    = {},   -- [PurchaseId] = true, защита от двойной выдачи
-		PassGrants  = {},   -- [PassKey] = true, разовые выплаты за геймпассы
+		SoldCount   = 0,
+		Tutorial    = 0,
+		Achievements = {},
+		BonusMultiplier = 0,
+		HasClaimed  = false,
+		Receipts    = {},
+		PassGrants  = {},
 		Playtime    = 0,
 	}
 end
 
--- ═══════════════════════════════════════════════════════════════
--- ТЕГИ CollectionService (никакого поиска по именам в логике)
--- ═══════════════════════════════════════════════════════════════
 Config.Tags = {
 	Product      = "Product",
 	Station      = "Station",
@@ -928,31 +827,70 @@ Config.Tags = {
 	Trigger      = "Trigger",
 }
 
--- ═══════════════════════════════════════════════════════════════
--- REMOTE-СОБЫТИЯ (создаются кодом в Main.server.lua)
--- Remote используются ТОЛЬКО для UI и уведомлений.
--- ═══════════════════════════════════════════════════════════════
 Config.RemoteNames = {
-	"CurrencyChanged",   -- S→C: баланс
-	"StateSync",         -- S→C: полное состояние (станции, ребёрны, цель)
-	"Notify",            -- S→C: тост-уведомление
-	"ProductSold",       -- S→C: всплывашка «+N» и вспышка
-	"StationPurchased",  -- S→C: всплывашка «Куплено!»
-	"FTUEStep",          -- S→C: текущий шаг обучения
-	"StarterOffer",      -- S→C: показать окно стартового набора
-	"AchievementSync",   -- S→C: полный список достижений и их состояние
-	"AchievementUnlock", -- S→C: всплывашка «достижение открыто»
-	"RequestState",      -- C→S: клиент просит пересинхронизацию
-	"RequestRebirth",    -- C→S: запрос ребёрна (валидируется на сервере)
-	"RequestPurchase",   -- C→S: запрос промпта GamePass/DevProduct
-	"RequestAchievements", -- C→S: клиент просит список достижений
+	"CurrencyChanged",
+	"StateSync",
+	"Notify",
+	"ProductSold",
+	"StationPurchased",
+	"FTUEStep",
+	"StarterOffer",
+	"AchievementSync",
+	"AchievementUnlock",
+	"Broadcast",
+	"RequestState",
+	"RequestRebirth",
+	"RequestPurchase",
+	"RequestAchievements",
 }
 
-Config.RemoteCooldown = 0.5  -- rate-limit на каждый C→S Remote (sanity check)
+Config.RemoteFunctionNames = {
+	"GetInventory",
+	"BuyStation",
+	"GetLeaderboard",
+}
 
--- ═══════════════════════════════════════════════════════════════
--- ХЕЛПЕРЫ
--- ═══════════════════════════════════════════════════════════════
+Config.ClientFunctionNames = {
+	"ConfirmAction",
+}
+
+Config.RemoteCooldown = 0.5
+
+Config.Net = {
+	Default = { Burst = 5, PerSecond = 2 },
+
+	Limits = {
+		RequestState        = { Burst = 4,  PerSecond = 1 },
+		RequestRebirth      = { Burst = 2,  PerSecond = 0.5 },
+		RequestPurchase     = { Burst = 3,  PerSecond = 1 },
+		RequestAchievements = { Burst = 4,  PerSecond = 1 },
+
+		GetInventory        = { Burst = 5,  PerSecond = 1.5 },
+		BuyStation          = { Burst = 4,  PerSecond = 2 },
+		GetLeaderboard      = { Burst = 3,  PerSecond = 1 },
+	},
+
+	InvokeTimeout = 20,
+	StrikeLimit   = 25,
+	StrikeDecay   = 10,
+	MuteSeconds   = 5,
+	LogRejects    = true,
+}
+
+Config.Feed = {
+	Enabled     = true,
+	MaxLines    = 4,
+	Lifetime    = 7,
+	MinStationPrice = 1000,
+}
+
+Config.Leaderboard = {
+	StatName     = "Butter",
+	RebirthStat  = "Rebirths",
+	MaxRows      = 10,
+	Refresh      = 5,
+}
+
 local byId = {}
 for index, def in ipairs(Config.Stations) do
 	def.Index = index
@@ -963,7 +901,6 @@ function Config.GetStation(id: string)
 	return byId[id]
 end
 
--- Кто идёт следующим в цепочке после station Id (nil, если конец цепочки)
 function Config.GetNext(id: string)
 	for _, def in ipairs(Config.Stations) do
 		if def.Requires == id then
@@ -973,7 +910,6 @@ function Config.GetNext(id: string)
 	return nil
 end
 
--- Первая станция, которую игрок ещё не купил и которая ему доступна
 function Config.GetNextGoal(owned: { [string]: boolean }, rebirths: number)
 	for _, def in ipairs(Config.Stations) do
 		if not owned[def.Id] then
@@ -987,7 +923,6 @@ function Config.GetNextGoal(owned: { [string]: boolean }, rebirths: number)
 	return nil
 end
 
--- Короткая запись больших чисел для UI: 12.4K, 3.1M …
 function Config.FormatNumber(n: number): string
 	n = math.floor(n)
 	local suffixes = { { 1e12, "T" }, { 1e9, "B" }, { 1e6, "M" }, { 1e3, "K" } }

@@ -1,34 +1,18 @@
---[[
-	AchievementService — достижения и награды за них.
-
-	Условия целиком описаны в Config.Achievements.List, здесь только
-	их проверка. Добавить достижение = дописать строку в конфиг.
-
-	Когда пересчитываем:
-	  • купили станцию, заняли плот, сделали ребёрн — сразу по событию;
-	  • накопительные условия (всего заработано) — редким проходом
-	    раз в Config.Achievements.SweepInterval секунд.
-
-	Награды выдаёт только сервер. Клиент получает готовый список
-	через RemoteEvent и просто рисует его.
-]]
-
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
-local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared:WaitForChild("Config"))
+local Schema = require(Shared:WaitForChild("Schema"))
 local DataService = require(script.Parent.DataService)
 local CurrencyService = require(script.Parent.CurrencyService)
+local NetService = require(script.Parent.NetService)
 
 local AchievementService = {}
 
--- Сигнал: (player) — игрок сам открыл панель наград.
--- По нему обучение закрывает последний шаг.
 AchievementService.PanelOpened = Instance.new("BindableEvent")
 
--- Хук подставляет Main: (player, passKey) -> boolean.
--- Так достижения за покупки не тянут за собой MonetizationService.
 AchievementService.OwnsPass = nil
 
 local remotes
@@ -40,9 +24,6 @@ local function log(fmt, ...)
 	end
 end
 
--- ═══════════════════════════════════════════════════════════════
--- ПРОВЕРКА УСЛОВИЯ
--- ═══════════════════════════════════════════════════════════════
 local function isMet(player: Player, def, data): boolean
 	if def.Claimed then
 		return data.HasClaimed == true
@@ -74,8 +55,7 @@ local function isMet(player: Player, def, data): boolean
 		return (data.TotalEarned or 0) >= def.TotalEarned
 	end
 	if def.Collection then
-		-- Коллекция закрывается, когда открыты все БЕСПЛАТНЫЕ достижения:
-		-- покупные помечены ExcludeFromCollection и не блокируют её
+
 		for _, other in ipairs(Config.Achievements.List) do
 			if not other.Collection and not other.ExcludeFromCollection
 				and not (data.Achievements or {})[other.Id] then
@@ -93,8 +73,7 @@ local function grantReward(player: Player, data, def)
 		return
 	end
 	if reward.Cash then
-		-- false: награда не идёт в «всего заработано», иначе она сама
-		-- открывала бы достижения за накопленный заработок
+
 		CurrencyService.Add(player, reward.Cash, "achievement:" .. def.Id, false)
 	end
 	if reward.Multiplier then
@@ -103,9 +82,6 @@ local function grantReward(player: Player, data, def)
 	end
 end
 
--- ═══════════════════════════════════════════════════════════════
--- СИНХРОНИЗАЦИЯ С КЛИЕНТОМ
--- ═══════════════════════════════════════════════════════════════
 function AchievementService.BuildList(player: Player)
 	local data = DataService.Get(player)
 	if not data then
@@ -117,15 +93,13 @@ function AchievementService.BuildList(player: Player)
 	for _, def in ipairs(Config.Achievements.List) do
 		local isUnlocked = unlocked[def.Id] == true
 
-		-- Скрытые показываем только после выполнения: пока игрок не купил
-		-- пасс, он их не видит и может закрыть список на 100% бесплатно
 		if not def.Hidden or isUnlocked then
 			total += 1
 			if isUnlocked then
 				done += 1
 			end
 			table.insert(list, {
-				Order = #list + 1,   -- запоминаем позицию из конфига
+				Order = #list + 1,
 				Id = def.Id,
 				Name = def.Name,
 				Desc = def.Desc,
@@ -137,9 +111,6 @@ function AchievementService.BuildList(player: Player)
 		end
 	end
 
-	-- Премиальные идут в конец списка, чтобы не разбивать обычную цепочку.
-	-- Внутри группы сохраняем порядок конфига: table.sort нестабильна,
-	-- и без явного Order бесплатные награды перемешивались.
 	table.sort(list, function(a, b)
 		if a.Premium ~= b.Premium then
 			return not a.Premium
@@ -162,9 +133,6 @@ function AchievementService.Push(player: Player)
 	end
 end
 
--- ═══════════════════════════════════════════════════════════════
--- ОСНОВНАЯ ПРОВЕРКА
--- ═══════════════════════════════════════════════════════════════
 function AchievementService.Check(player: Player)
 	local data = DataService.Get(player)
 	if not data then
@@ -173,8 +141,7 @@ function AchievementService.Check(player: Player)
 	data.Achievements = data.Achievements or {}
 
 	local unlockedNow = {}
-	-- Два прохода: коллекция может закрыться тем же тиком, что и последнее
-	-- обычное достижение, поэтому проверяем список ещё раз
+
 	for _ = 1, 2 do
 		for _, def in ipairs(Config.Achievements.List) do
 			if not data.Achievements[def.Id] and isMet(player, def, data) then
@@ -200,11 +167,10 @@ function AchievementService.Check(player: Player)
 	end
 
 	AchievementService.Push(player)
-	-- Награда — это валюта, сохраняем не дожидаясь автосейва
+
 	task.spawn(DataService.SaveAsync, player, false)
 end
 
--- Отметка «игрок занимал плот» живёт в профиле, а не в Workspace
 function AchievementService.MarkClaimed(player: Player)
 	local data = DataService.Get(player)
 	if data then
@@ -213,38 +179,23 @@ function AchievementService.MarkClaimed(player: Player)
 	AchievementService.Check(player)
 end
 
--- ═══════════════════════════════════════════════════════════════
--- INIT
--- ═══════════════════════════════════════════════════════════════
 function AchievementService.Init()
 	remotes = ReplicatedStorage:WaitForChild("Remotes")
 
-	-- Перманентный бонус за коллекцию идёт общим множителем дохода
 	CurrencyService.RegisterMultiplierProvider(function(player)
 		local data = DataService.Get(player)
 		return 1 + (data and data.BonusMultiplier or 0)
 	end)
 
-	local lastRequest = {}
-	remotes.RequestAchievements.OnServerEvent:Connect(function(player, openedByUser)
-		local now = os.clock()
-		if lastRequest[player] and now - lastRequest[player] < Config.RemoteCooldown then
-			return
-		end
-		lastRequest[player] = now
+	NetService.OnEvent("RequestAchievements", {
+		Schema.Optional(Schema.Boolean()),
+	}, function(player, openedByUser)
 		AchievementService.Push(player)
-
-		-- Sanity check: верим только явному булеву, всё остальное игнорируем
 		if openedByUser == true then
 			AchievementService.PanelOpened:Fire(player)
 		end
 	end)
 
-	Players.PlayerRemoving:Connect(function(player)
-		lastRequest[player] = nil
-	end)
-
-	-- Накопительные условия: редкий проход, а не проверка на каждую продажу
 	RunService.Heartbeat:Connect(function(dt)
 		sweepAccum += dt
 		if sweepAccum < Config.Achievements.SweepInterval then

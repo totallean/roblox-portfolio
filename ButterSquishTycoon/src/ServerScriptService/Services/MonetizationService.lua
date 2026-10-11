@@ -1,35 +1,23 @@
---[[
-	MonetizationService — ProcessReceipt, Game Pass, бусты, косметика,
-	стартовый набор.
-
-	Все Id проставлены реальными в Config.Monetization. Если какой-то
-	окажется нулевым, покупка не выдаётся, а ProcessReceipt возвращает
-	NotProcessedYet — Roblox вернёт деньги игроку, а не съест их.
-
-	Лестница дев-продуктов: entry (дешёвый буст) → core (бандл) → premium.
-	Пассы: стартовый набор, x2 к цене, автосбор, VIP с косметикой.
-]]
-
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared:WaitForChild("Config"))
+local Schema = require(Shared:WaitForChild("Schema"))
 local DataService = require(script.Parent.DataService)
 local CurrencyService = require(script.Parent.CurrencyService)
 local PlotService = require(script.Parent.PlotService)
+local NetService = require(script.Parent.NetService)
 
 local MonetizationService = {}
 
-local passCache = {}    -- [player] = { [passKey] = bool }
-local boosts = {}       -- [player] = { Multiplier = 2, ExpiresAt = os.time() + N }
+local passCache = {}
+local boosts = {}
 local remotes
 
--- Хук: RebirthService подставит себя в Main (без циклического require)
 MonetizationService.OnSkipRebirth = nil
 
--- Сигнал: (player) — набор принадлежащих игроку пассов изменился.
--- По нему Main пересобирает состояние для UI и проверяет достижения.
 MonetizationService.PassesChanged = Instance.new("BindableEvent")
 
 local function log(fmt, ...)
@@ -50,9 +38,6 @@ local function retry(label: string, fn)
 	return false, nil
 end
 
--- ═══════════════════════════════════════════════════════════════
--- GAME PASS
--- ═══════════════════════════════════════════════════════════════
 function MonetizationService.OwnsPass(player: Player, passKey: string): boolean
 	local cache = passCache[player]
 	return cache ~= nil and cache[passKey] == true
@@ -67,13 +52,12 @@ local function refreshPasses(player: Player)
 			end)
 			passCache[player][key] = ok and owns == true
 		else
-			-- TODO: заглушка — реального пасса ещё нет
+
 			passCache[player][key] = false
 		end
 	end
 end
 
--- Какие пассы принадлежат игроку — в виде таблицы для клиента
 function MonetizationService.GetOwnedPasses(player: Player)
 	local owned = {}
 	for key in pairs(Config.Monetization.GamePasses) do
@@ -84,13 +68,10 @@ function MonetizationService.GetOwnedPasses(player: Player)
 	return owned
 end
 
--- ═══════════════════════════════════════════════════════════════
--- ВРЕМЕННЫЕ БУСТЫ
--- ═══════════════════════════════════════════════════════════════
 function MonetizationService.GrantBoost(player: Player, multiplier: number, duration: number)
 	local now = os.time()
 	local current = boosts[player]
-	-- Повторная покупка продлевает буст, а не перетирает его
+
 	local base = (current and current.ExpiresAt > now) and current.ExpiresAt or now
 	boosts[player] = { Multiplier = multiplier, ExpiresAt = base + duration }
 	CurrencyService.Push(player)
@@ -105,15 +86,13 @@ function MonetizationService.GetBoostRemaining(player: Player): number
 	return math.max(0, boost.ExpiresAt - os.time())
 end
 
--- Провайдер множителя для CurrencyService: геймпасс × активный буст
 local function multiplierProvider(player: Player): number
 	local mult = 1
 	local pass = Config.Monetization.GamePasses.DoubleButter
 	if MonetizationService.OwnsPass(player, "DoubleButter") then
 		mult *= (pass.Multiplier or 2)
 	end
-	-- Остальные пассы с множителем (стартовый набор, VIP) — по полю,
-	-- а не по имени: добавишь новый пасс с Multiplier, он подхватится сам
+
 	for key, other in pairs(Config.Monetization.GamePasses) do
 		if key ~= "DoubleButter" and other.Multiplier and MonetizationService.OwnsPass(player, key) then
 			mult *= other.Multiplier
@@ -126,9 +105,6 @@ local function multiplierProvider(player: Player): number
 	return mult
 end
 
--- ═══════════════════════════════════════════════════════════════
--- ВЫДАЧА ТОВАРА
--- ═══════════════════════════════════════════════════════════════
 local function grantProduct(player: Player, productKey: string): boolean
 	local product = Config.Monetization.Products[productKey]
 	if not product then
@@ -167,13 +143,10 @@ local function productKeyById(productId: number): string?
 	return nil
 end
 
--- ═══════════════════════════════════════════════════════════════
--- ProcessReceipt
--- ═══════════════════════════════════════════════════════════════
 local function processReceipt(receiptInfo)
 	local player = Players:GetPlayerByUserId(receiptInfo.PlayerId)
 	if not player then
-		-- Игрок вышел до выдачи — попробуем в следующий заход
+
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 
@@ -182,7 +155,6 @@ local function processReceipt(receiptInfo)
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 
-	-- Защита от двойной выдачи одного и того же чека
 	data.Receipts = data.Receipts or {}
 	if data.Receipts[receiptInfo.PurchaseId] then
 		return Enum.ProductPurchaseDecision.PurchaseGranted
@@ -201,7 +173,6 @@ local function processReceipt(receiptInfo)
 
 	data.Receipts[receiptInfo.PurchaseId] = true
 
-	-- Валюту за реальные деньги сохраняем немедленно
 	local saved = DataService.SaveAsync(player, false)
 	if not saved then
 		data.Receipts[receiptInfo.PurchaseId] = nil
@@ -212,12 +183,6 @@ local function processReceipt(receiptInfo)
 	return Enum.ProductPurchaseDecision.PurchaseGranted
 end
 
--- ═══════════════════════════════════════════════════════════════
--- КОСМЕТИКА
--- Вешается заново при каждом появлении персонажа: Highlight на модель
--- и ParticleEmitter на HumanoidRootPart. Описание эффекта целиком
--- в Config, здесь только применение.
--- ═══════════════════════════════════════════════════════════════
 local function applyCosmetic(character: Model, cosmetic)
 	local root = character:FindFirstChild("HumanoidRootPart")
 	if not root then
@@ -263,12 +228,6 @@ function MonetizationService.ApplyCosmetics(player: Player, character: Model)
 	end
 end
 
--- ═══════════════════════════════════════════════════════════════
--- СТАРТОВЫЙ НАБОР
--- Окно показывается КАЖДЫЙ раз при входе в игру, но только если пасс
--- ещё не куплен. Автоматический платёжный диалог Roblox НЕ открываем:
--- всплывает обычная панель, диалог откроется уже по нажатию игрока.
--- ═══════════════════════════════════════════════════════════════
 function MonetizationService.SendStarterOffer(player: Player)
 	local cfg = Config.Monetization.StarterOffer
 	if not cfg or not cfg.Enabled then
@@ -279,7 +238,7 @@ function MonetizationService.SendStarterOffer(player: Player)
 		if not player.Parent then
 			return
 		end
-		-- Куплен — не показываем
+
 		if cfg.Kind == "pass" and MonetizationService.OwnsPass(player, cfg.Key) then
 			return
 		end
@@ -305,13 +264,6 @@ function MonetizationService.SendStarterOffer(player: Player)
 	end)
 end
 
--- ═══════════════════════════════════════════════════════════════
--- AUTO-COLLECT (геймпасс)
--- Застрявший брусок не утилизируется, а продаётся.
--- Подключается из Main через DropperService.OnProductExpired.
--- ═══════════════════════════════════════════════════════════════
--- Автосбор даёт и свой пасс, и стартовый набор — он объявлен
--- с GrantsAutoCollect, поэтому проверяем оба
 local function hasAutoCollect(player: Player): boolean
 	if MonetizationService.OwnsPass(player, "AutoCollect") then
 		return true
@@ -333,14 +285,11 @@ function MonetizationService.HandleExpiredProduct(plot: Model, product: BasePart
 	return true
 end
 
--- ═══════════════════════════════════════════════════════════════
--- ЖИЗНЕННЫЙ ЦИКЛ
--- ═══════════════════════════════════════════════════════════════
 function MonetizationService.OnPlayerAdded(player: Player)
 	task.spawn(function()
 		refreshPasses(player)
 		CurrencyService.Push(player)
-		-- Проверку владения делаем ПОСЛЕ обновления кэша пассов
+
 		MonetizationService.PassesChanged:Fire(player)
 		MonetizationService.SendStarterOffer(player)
 		if player.Character then
@@ -348,9 +297,8 @@ function MonetizationService.OnPlayerAdded(player: Player)
 		end
 	end)
 
-	-- Косметика слетает вместе со старым персонажем, вешаем заново
 	player.CharacterAdded:Connect(function(character)
-		task.wait(0.5)   -- ждём, пока соберётся HumanoidRootPart
+		task.wait(0.5)
 		MonetizationService.ApplyCosmetics(player, character)
 	end)
 
@@ -367,7 +315,6 @@ function MonetizationService.Init()
 	CurrencyService.RegisterMultiplierProvider(multiplierProvider)
 	MarketplaceService.ProcessReceipt = processReceipt
 
-	-- Покупка пасса прямо в сессии — обновляем кэш сразу
 	MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, gamePassId, purchased)
 		if not purchased then
 			return
@@ -377,8 +324,6 @@ function MonetizationService.Init()
 				passCache[player] = passCache[player] or {}
 				passCache[player][key] = true
 
-				-- Пассы с разовой выплатой (стартовый набор) начисляют её
-				-- один раз, отметка живёт в профиле
 				if pass.GrantCash then
 					local data = DataService.Get(player)
 					if data then
@@ -391,7 +336,6 @@ function MonetizationService.Init()
 					end
 				end
 
-				-- Косметика включается сразу, не дожидаясь респавна
 				if pass.Cosmetic and player.Character then
 					MonetizationService.ApplyCosmetics(player, player.Character)
 				end
@@ -403,18 +347,18 @@ function MonetizationService.Init()
 		end
 	end)
 
-	-- Запрос промпта от клиента. Sanity check: ключ обязан быть в конфиге.
-	local lastPrompt = {}
-	remotes.RequestPurchase.OnServerEvent:Connect(function(player, kind, key)
-		if type(kind) ~= "string" or type(key) ~= "string" then
-			return
-		end
-		local now = os.clock()
-		if lastPrompt[player] and now - lastPrompt[player] < Config.RemoteCooldown then
-			return
-		end
-		lastPrompt[player] = now
+	local knownKeys = {}
+	for key in pairs(Config.Monetization.GamePasses) do
+		knownKeys[key] = true
+	end
+	for key in pairs(Config.Monetization.Products) do
+		knownKeys[key] = true
+	end
 
+	NetService.OnEvent("RequestPurchase", {
+		Schema.String{ OneOf = { "pass", "product" } },
+		Schema.Key(knownKeys),
+	}, function(player, kind, key)
 		if kind == "product" then
 			local product = Config.Monetization.Products[key]
 			if product and product.Id > 0 then
@@ -433,7 +377,6 @@ function MonetizationService.Init()
 	end)
 
 	Players.PlayerRemoving:Connect(function(player)
-		lastPrompt[player] = nil
 		MonetizationService.OnPlayerRemoving(player)
 	end)
 end

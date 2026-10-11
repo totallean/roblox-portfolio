@@ -1,50 +1,32 @@
---[[
-	ButtonService — Buy-кнопки: видимость по цепочке, покупка, цветовая индикация.
-
-	Правила из чек-листа:
-	  • кнопки появляются поэтапно: следующая видна только после покупки
-	    предыдущей (поле Requires в конфиге);
-	  • после покупки кнопка исчезает; если у цепочки есть продолжение —
-	    появляется следующая, если нет — не появляется ничего;
-	  • зелёный = хватает денег, красный = не хватает;
-	  • касание без денег → уведомление «Нужно ещё N»;
-	  • RequiredRebirths прячет кнопку до нужного числа ребёрнов;
-	  • debounce на Touched — иначе один тач списывает деньги дважды.
-
-	Вся покупка целиком на сервере. Клиент об этом даже не знает.
-]]
-
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
-local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared:WaitForChild("Config"))
+local Schema = require(Shared:WaitForChild("Schema"))
 local PlotService = require(script.Parent.PlotService)
 local DataService = require(script.Parent.DataService)
 local CurrencyService = require(script.Parent.CurrencyService)
+local NetService = require(script.Parent.NetService)
 
 local ButtonService = {}
 
--- Хуки выставляет Main.server.lua (никаких циклических require)
-ButtonService.OnStationEnabled = nil     -- (player, plot, def)
-ButtonService.OnRebirthRequested = nil   -- (player, plot)
-ButtonService.OnStationsRestored = nil   -- (player, plot) — после входа и ребёрна
+ButtonService.OnStationEnabled = nil
+ButtonService.OnRebirthRequested = nil
+ButtonService.OnStationsRestored = nil
 
--- Сигнал: (player, def) — нужен FTUE и всплывашке «Куплено!»
 ButtonService.Purchased = Instance.new("BindableEvent")
 
 local connected = {}
-local touchLock = {}     -- [player] = os.clock()
+local touchLock = {}
 local refreshAccum = 0
 local remotes
 
 local HIDDEN_DROP = Vector3.new(0, -20, 0)
 
--- ═══════════════════════════════════════════════════════════════
--- ОПИСАНИЕ КНОПКИ (станция или ребёрн — единый интерфейс)
--- ═══════════════════════════════════════════════════════════════
 local function describe(id: string, data)
 	if id == "Rebirth" then
 		local cost = Config.RebirthCost(data.Rebirths or 0)
@@ -73,17 +55,11 @@ local function describe(id: string, data)
 		Price = def.Price,
 		Label = def.Label,
 		Offset = def.ButtonOffset,
-		-- Кнопка видима, только если станция не куплена, предыдущая куплена
-		-- и набрано нужное число ребёрнов
+
 		Visible = (owned[id] ~= true) and reqOk and rebirthOk,
 	}
 end
 
--- ═══════════════════════════════════════════════════════════════
--- ПОКАЗ / СКРЫТИЕ + ПОДПРЫГИВАНИЕ ЧЕРЕЗ TweenService
--- Двигаем всю Model через PivotTo, поэтому замена плейсхолдера
--- моделью из Toolbox ничего не ломает.
--- ═══════════════════════════════════════════════════════════════
 local function tweenPivot(model: Model, fromCF: CFrame, toCF: CFrame, duration: number)
 	local style = Enum.EasingStyle.Back
 	local direction = Enum.EasingDirection.Out
@@ -119,7 +95,7 @@ local function setShown(plot: Model, slot: Model, trigger: BasePart, info, shown
 
 	if shown then
 		if not wasShown then
-			-- Подпрыгивание при появлении
+
 			local overshoot = shownCF + Vector3.new(0, Config.Buttons.BounceStuds, 0)
 			slot:PivotTo(hiddenCF)
 			tweenPivot(slot, hiddenCF, overshoot, Config.Buttons.BounceTime)
@@ -150,7 +126,6 @@ local function paint(slot: Model, trigger: BasePart, info, balance: number)
 	local affordable = balance >= info.Price
 	local color = affordable and Config.Palette.AcidGreen or Config.Palette.HotRed
 
-	-- Плейсхолдер красим напрямую…
 	local placeholder = slot:FindFirstChild("Placeholder")
 	if placeholder and placeholder:IsA("BasePart") then
 		if placeholder.Color ~= color then
@@ -159,8 +134,6 @@ local function paint(slot: Model, trigger: BasePart, info, balance: number)
 		end
 	end
 
-	-- …а модель из Toolbox не перекрашиваем, ей хватит цветной подсветки:
-	-- так замена ассета не ломает индикацию «хватает / не хватает денег».
 	local glow = slot:FindFirstChildOfClass("Highlight")
 	if not glow then
 		glow = Instance.new("Highlight")
@@ -176,16 +149,13 @@ local function paint(slot: Model, trigger: BasePart, info, balance: number)
 
 	local billboard = trigger:FindFirstChild("Price")
 	if billboard and billboard:FindFirstChild("Text") then
-		-- Без иконки валюты: на ценнике она только мешала читать цифру
+
 		local priceText = info.Price > 0 and Config.FormatNumber(info.Price) or Config.Text.FreePrice
 		billboard.Text.Text = ("%s\n%s"):format(info.Label, priceText)
 		billboard.Text.TextColor3 = affordable and Config.Palette.White or Config.Palette.HotRed
 	end
 end
 
--- ═══════════════════════════════════════════════════════════════
--- ОБНОВЛЕНИЕ ВСЕХ КНОПОК ПЛОТА
--- ═══════════════════════════════════════════════════════════════
 function ButtonService.Refresh(player: Player, animate: boolean?)
 	local plot = PlotService.GetPlot(player)
 	local data = DataService.Get(player)
@@ -215,7 +185,6 @@ function ButtonService.Refresh(player: Player, animate: boolean?)
 	end
 end
 
--- Спрятать все кнопки (плот освободился)
 function ButtonService.ResetPlot(plot: Model)
 	local buttons = plot:FindFirstChild("Buttons")
 	local triggers = plot:FindFirstChild("Triggers")
@@ -240,9 +209,6 @@ function ButtonService.ResetPlot(plot: Model)
 	end
 end
 
--- ═══════════════════════════════════════════════════════════════
--- ВЫДАЧА СТАНЦИИ (единственный путь — только отсюда)
--- ═══════════════════════════════════════════════════════════════
 function ButtonService.GrantStation(player: Player, def, silent: boolean?)
 	local data = DataService.Get(player)
 	local plot = PlotService.GetPlot(player)
@@ -266,7 +232,43 @@ function ButtonService.GrantStation(player: Player, def, silent: boolean?)
 	return true
 end
 
--- Восстановление после входа: заново включаем всё купленное
+function ButtonService.TryPurchase(player: Player, stationId: string): (boolean, string?)
+	local data = DataService.Get(player)
+	if not data then
+		return false, Config.Text.DataLoading
+	end
+
+	local plot = PlotService.GetPlot(player)
+	if not plot then
+		return false, Config.Text.BuyNoPlot
+	end
+
+	local info = describe(stationId, data)
+
+	if not info or info.IsRebirth then
+		return false, Config.Text.BuyUnknown
+	end
+
+	if (data.Stations or {})[stationId] == true then
+		return false, Config.Text.BuyOwned
+	end
+
+	if not info.Visible then
+		return false, Config.Text.BuyLocked
+	end
+
+	if data.Currency < info.Price then
+		local need = info.Price - data.Currency
+		return false, (Config.Text.NeedMore):format(Config.FormatNumber(need))
+	end
+
+	if not CurrencyService.TrySpend(player, info.Price, "buy:" .. stationId) then
+		return false, Config.Text.NetError
+	end
+	ButtonService.GrantStation(player, info.Def)
+	return true, nil
+end
+
 function ButtonService.RestorePlayer(player: Player)
 	local data = DataService.Get(player)
 	local plot = PlotService.GetPlot(player)
@@ -276,7 +278,7 @@ function ButtonService.RestorePlayer(player: Player)
 	data.Stations = data.Stations or {}
 
 	for _, def in ipairs(Config.Stations) do
-		-- Станции с нулевой ценой выдаются сразу и не требуют покупки
+
 		if def.Price == 0 then
 			data.Stations[def.Id] = true
 		end
@@ -286,17 +288,13 @@ function ButtonService.RestorePlayer(player: Player)
 			end
 		end
 	end
-	-- Пересчитать сквозные множители (ускорители ленты) нужно и когда
-	-- станций нет вообще — например сразу после ребёрна
+
 	if ButtonService.OnStationsRestored then
 		ButtonService.OnStationsRestored(player, plot)
 	end
 	ButtonService.Refresh(player, true)
 end
 
--- ═══════════════════════════════════════════════════════════════
--- КАСАНИЕ КНОПКИ
--- ═══════════════════════════════════════════════════════════════
 local function playerFromHit(hit: BasePart): Player?
 	local character = hit.Parent
 	if not character then
@@ -317,7 +315,6 @@ local function onButtonTouched(trigger: BasePart, hit: BasePart)
 		return
 	end
 
-	-- Debounce на игрока: главный источник дюпа
 	local now = os.clock()
 	if touchLock[player] and now - touchLock[player] < Config.Buttons.TouchCooldown then
 		return
@@ -326,7 +323,7 @@ local function onButtonTouched(trigger: BasePart, hit: BasePart)
 
 	local plot = PlotService.GetPlotFrom(trigger)
 	local ownPlot = PlotService.GetPlot(player)
-	-- Кнопки чужого плота не работают
+
 	if not plot or plot ~= ownPlot then
 		remotes.Notify:FireClient(player, Config.Text.NotOwnPlot, Config.Palette.HotRed)
 		return
@@ -343,25 +340,22 @@ local function onButtonTouched(trigger: BasePart, hit: BasePart)
 		return
 	end
 
-	-- Не хватает денег → уведомление «Нужно ещё N»
-	if data.Currency < info.Price then
-		local need = info.Price - data.Currency
-		remotes.Notify:FireClient(player, (Config.Text.NeedMore):format(Config.FormatNumber(need)), Config.Palette.HotRed)
-		return
-	end
-
 	if info.IsRebirth then
+		if data.Currency < info.Price then
+			local need = info.Price - data.Currency
+			remotes.Notify:FireClient(player, (Config.Text.NeedMore):format(Config.FormatNumber(need)), Config.Palette.HotRed)
+			return
+		end
 		if ButtonService.OnRebirthRequested then
 			ButtonService.OnRebirthRequested(player, plot)
 		end
 		return
 	end
 
-	-- Списание и выдача — строго в этом порядке и только на сервере
-	if not CurrencyService.TrySpend(player, info.Price, "buy:" .. info.Id) then
-		return
+	local ok, reason = ButtonService.TryPurchase(player, id)
+	if not ok and reason then
+		remotes.Notify:FireClient(player, reason, Config.Palette.HotRed)
 	end
-	ButtonService.GrantStation(player, info.Def)
 end
 
 local function bindButton(trigger: BasePart)
@@ -374,11 +368,18 @@ local function bindButton(trigger: BasePart)
 	end)
 end
 
--- ═══════════════════════════════════════════════════════════════
--- INIT
--- ═══════════════════════════════════════════════════════════════
 function ButtonService.Init()
 	remotes = ReplicatedStorage:WaitForChild("Remotes")
+
+	local stationIds = {}
+	for _, def in ipairs(Config.Stations) do
+		stationIds[def.Id] = true
+	end
+
+	NetService.OnFunction("BuyStation", { Schema.Key(stationIds) }, function(player, stationId)
+		local ok, reason = ButtonService.TryPurchase(player, stationId)
+		return { Ok = ok, Reason = reason }
+	end)
 
 	for _, trigger in ipairs(CollectionService:GetTagged(Config.Tags.Trigger)) do
 		if trigger:GetAttribute("Kind") == "Button" then
@@ -391,12 +392,10 @@ function ButtonService.Init()
 		end
 	end)
 
-	-- Мгновенная перекраска при изменении баланса
 	CurrencyService.Changed.Event:Connect(function(player)
 		ButtonService.Refresh(player, false)
 	end)
 
-	-- Плюс редкий фоновый рефреш (ребёрны, бусты, чужие изменения)
 	RunService.Heartbeat:Connect(function(dt)
 		refreshAccum += dt
 		if refreshAccum < 0.5 then

@@ -1,11 +1,3 @@
---[[
-	CollectorService — приём продукта и начисление валюты.
-
-	Продажа происходит ТОЛЬКО здесь и ТОЛЬКО на сервере.
-	Клиент получает уже посчитанное число через RemoteEvent — исключительно
-	чтобы нарисовать всплывашку.
-]]
-
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
 local TweenService = game:GetService("TweenService")
@@ -19,14 +11,12 @@ local DropperService = require(script.Parent.DropperService)
 
 local CollectorService = {}
 
--- Сигнал: (player, amount) — нужен FTUE и аналитике
 CollectorService.Sold = Instance.new("BindableEvent")
 
 local connected = {}
 local flashing = {}
 local remotes
 
--- Вспышка неонового блока при продаже
 local function flash(plot: Model)
 	if flashing[plot] then
 		return
@@ -51,9 +41,8 @@ local function flash(plot: Model)
 	up:Play()
 end
 
--- Единственная точка продажи. Возвращает начисленную сумму.
 function CollectorService.Sell(plot: Model, product: BasePart): number
-	-- Продукт уже продан и вернулся в пул — второй раз не платим
+
 	if not CollectionService:HasTag(product, Config.Tags.Product) then
 		return 0
 	end
@@ -72,8 +61,7 @@ function CollectorService.Sell(plot: Model, product: BasePart): number
 
 	if amount > 0 then
 		CurrencyService.Add(owner, amount, "sell")
-		-- Счётчик реальных продаж: по нему считаются достижения,
-		-- начисления из наград сюда не попадают
+
 		local data = DataService.Get(owner)
 		if data then
 			data.SoldCount = (data.SoldCount or 0) + 1
@@ -95,7 +83,7 @@ local function bindSellZone(zone: BasePart)
 		if not CollectionService:HasTag(hit, Config.Tags.Product) then
 			return
 		end
-		-- Debounce: без него один брусок продаётся несколько раз подряд
+
 		local now = os.clock()
 		local lockUntil = hit:GetAttribute("LockUntil")
 		if lockUntil and now < lockUntil then
@@ -107,7 +95,7 @@ local function bindSellZone(zone: BasePart)
 		if not plot then
 			return
 		end
-		-- Чужой брусок на чужом плоте продать нельзя
+
 		if hit:GetAttribute("PlotName") ~= plot.Name then
 			return
 		end
@@ -115,10 +103,6 @@ local function bindSellZone(zone: BasePart)
 	end)
 end
 
--- Страховочный проход: Touched не срабатывает на «уснувшем» продукте
--- (например, если он упёрся в модель, вставленную из Toolbox) и может
--- пропустить брусок, проскочивший зону за один кадр. Раз в полсекунды
--- добираем всё, что уже пересекло плоскость продажи.
 local function sweep()
 	for _, plot in ipairs(PlotService.GetAllPlots()) do
 		local products = plot:FindFirstChild("Products")
@@ -129,7 +113,7 @@ local function sweep()
 			for _, product in ipairs(products:GetChildren()) do
 				if CollectionService:HasTag(product, Config.Tags.Product) then
 					local rel = zone.CFrame:PointToObjectSpace(product.Position)
-					-- Продукт уже на линии продажи или проехал её
+
 					if rel.Z >= -halfDepth and math.abs(rel.X) <= halfWidth and math.abs(rel.Y) <= 8 then
 						CollectorService.Sell(plot, product)
 					end
